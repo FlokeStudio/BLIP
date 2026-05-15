@@ -16,13 +16,13 @@ Balances personalization with LAN-first anonymity and zero cloud dependency.
 - Announce payload MAY include opaque “avatar fingerprint” URI or hash-only if sharing later.
 
 ## Acceptance criteria
-- [ ] Uploaded avatar displays in roster, dial, chat header, call UI where peer shown.
-- [ ] Oversize / invalid mime rejected with surfaced error string (i18n).
-- [ ] Deterministic procedural avatar recreated after regenerate.
-- [ ] Works offline-only; no outbound fetch.
+- [x] Uploaded avatar displays in roster, dial, chat header, call UI where peer shown. _(Roster, chat hub, chat header for self-peer, call window, settings preview; dial has no avatars.)_
+- [x] Oversize / invalid mime rejected with surfaced error string (i18n).
+- [x] Deterministic procedural avatar recreated after regenerate. _(“Use generated avatar” / remove custom.)_
+- [x] Works offline-only; no outbound fetch. _(Stored in `localStorage`.)_
 
 ## Technical notes
-- Cap decode size early to mitigate decompression bombs.
+- Cap decode size early to mitigate decompression bombs. _(1 MB file cap + 64×64 JPEG recompress in renderer.)_
 - Consider CSP `blob:`/`file:` allowances when loading local previews.
 
 ## Definition of done

@@ -83,6 +83,11 @@ export function createCallUI(config, api, options = {}) {
   voiceWrap.className = 'call-voice-wrap hidden';
   const avatarSlot = document.createElement('div');
   avatarSlot.className = 'call-avatar-slot';
+
+  function mountCallAvatar(id) {
+    avatarSlot.innerHTML = '';
+    avatarSlot.appendChild(createAvatarElement(id, 6, { selfBlipId: config?.blipId ?? null }));
+  }
   const waveform = document.createElement('div');
   waveform.className = 'call-waveform';
   for (let i = 0; i < 8; i++) {
@@ -277,9 +282,8 @@ export function createCallUI(config, api, options = {}) {
     statusEl.dataset.i18n = 'call.outgoing';
     statusEl.textContent = t('call.outgoing');
     videoWrap.classList.toggle('hidden', !video);
-    voiceWrap.classList.toggle('hidden', video);
-    avatarSlot.innerHTML = '';
-    avatarSlot.appendChild(createAvatarElement(targetId, 6));
+    voiceWrap.classList.toggle('hidden', !video);
+    mountCallAvatar(targetId);
 
     try {
       localStream = await getMedia(video);
@@ -380,8 +384,7 @@ export function createCallUI(config, api, options = {}) {
     deafenBtn.classList.add('hidden');
     videoWrap.classList.toggle('hidden', !withVideo);
     voiceWrap.classList.toggle('hidden', withVideo);
-    avatarSlot.innerHTML = '';
-    avatarSlot.appendChild(createAvatarElement(peerId, 6));
+    mountCallAvatar(peerId);
 
     activeCall = { peerId, pending: true };
   }

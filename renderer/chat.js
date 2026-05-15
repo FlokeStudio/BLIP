@@ -70,7 +70,15 @@ export function createChatView(peerId, config, onSend, onBack) {
     header.appendChild(backBtn);
   }
 
-  const avatar = createAvatarElement(peerId, 3);
+  const avatarMount = document.createElement('div');
+  avatarMount.className = 'chat-avatar-mount';
+  function mountHeaderAvatar() {
+    avatarMount.innerHTML = '';
+    avatarMount.appendChild(
+      createAvatarElement(peerId, 3, { selfBlipId: config?.blipId ?? null })
+    );
+  }
+  mountHeaderAvatar();
   const meta = document.createElement('div');
   meta.className = 'chat-peer-meta';
   const name = document.createElement('span');
@@ -81,7 +89,7 @@ export function createChatView(peerId, config, onSend, onBack) {
   idLabel.textContent = `#${peerId}`;
   meta.appendChild(name);
   meta.appendChild(idLabel);
-  header.appendChild(avatar);
+  header.appendChild(avatarMount);
   header.appendChild(meta);
 
   const headSpacer = document.createElement('div');
@@ -224,6 +232,9 @@ export function createChatView(peerId, config, onSend, onBack) {
     flashNew,
     setPeerName(displayName) {
       name.textContent = displayName || `BLIP-${peerId}`;
+    },
+    refreshHeaderAvatar() {
+      mountHeaderAvatar();
     },
     handleIncoming(msg) {
       addMessage(peerId, { ...msg, outgoing: false });

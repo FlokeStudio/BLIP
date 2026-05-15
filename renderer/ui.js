@@ -2,7 +2,13 @@ import { t, setLang, getLang, applyLangChange, onLangChange } from './i18n.js';
 import { createIdGrid } from './grid.js';
 import { createChatView, getMessages, addMessage } from './chat.js';
 import { showSignalLost } from './call.js';
-import { createAvatarElement } from './avatar.js';
+import {
+  createAvatarElement,
+  encodeAvatarFileToDataUrl,
+  clearCustomAvatar,
+  hasCustomAvatar,
+  setCustomAvatarDataUrl,
+} from './avatar.js';
 import { sounds } from './audio.js';
 import {
   THEME_GROUPS,
@@ -229,7 +235,7 @@ function renderPeersView() {
       const row = document.createElement('div');
       row.className = `peer-row glass ${peer.online ? 'online' : 'offline'}`;
 
-      const avatar = createAvatarElement(peer.blipId, 2);
+      const avatar = createAvatarElement(peer.blipId, 2, { selfBlipId: state.config.blipId });
       const info = document.createElement('div');
       info.className = 'peer-info';
       const name = document.createElement('span');
@@ -299,6 +305,101 @@ function showPeerContextMenu(e, peer) {
   setTimeout(() => {
     document.addEventListener('click', close, { once: true });
   }, 0);
+}
+
+function buildAvatarSettingsSection() {
+  const block = document.createElement('div');
+  block.className = 'settings-avatar-wrap';
+  if (!state.config?.blipId) return block;
+
+  const h = document.createElement('h3');
+  h.className = 'section-subtitle';
+  h.dataset.i18n = 'settings.avatar_title';
+  h.textContent = t('settings.avatar_title');
+  block.appendChild(h);
+
+  const row = document.createElement('div');
+  row.className = 'settings-avatar-row';
+
+  const preview = document.createElement('div');
+  preview.className = 'settings-avatar-preview';
+
+  function refreshPreview() {
+    preview.innerHTML = '';
+    preview.appendChild(
+      createAvatarElement(state.config.blipId, 5, { selfBlipId: state.config.blipId })
+    );
+  }
+  refreshPreview();
+  row.appendChild(preview);
+
+  const col = document.createElement('div');
+  col.className = 'settings-avatar-actions';
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = 'image/png,image/webp,image/jpeg';
+  fileInput.setAttribute('aria-hidden', 'true');
+  fileInput.tabIndex = -1;
+  fileInput.style.cssText = 'position:absolute;width:0;height:0;opacity:0;pointer-events:none';
+
+  const uploadBtn = document.createElement('button');
+  uploadBtn.type = 'button';
+  uploadBtn.className = 'btn btn-accent';
+  uploadBtn.dataset.i18n = 'settings.avatar_upload';
+  uploadBtn.textContent = t('settings.avatar_upload');
+  uploadBtn.addEventListener('click', () => fileInput.click());
+
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'btn btn-lang';
+  removeBtn.dataset.i18n = 'settings.avatar_remove';
+  removeBtn.textContent = t('settings.avatar_remove');
+  removeBtn.disabled = !hasCustomAvatar();
+  removeBtn.addEventListener('click', () => {
+    clearCustomAvatar();
+    refreshPreview();
+    removeBtn.disabled = !hasCustomAvatar();
+    window.dispatchEvent(new CustomEvent('blip-avatar-changed'));
+  });
+
+  fileInput.addEventListener('change', async () => {
+    const f = fileInput.files?.[0];
+    fileInput.value = '';
+    if (!f) return;
+    try {
+      const url = await encodeAvatarFileToDataUrl(f);
+      setCustomAvatarDataUrl(url);
+      refreshPreview();
+      removeBtn.disabled = false;
+      window.dispatchEvent(new CustomEvent('blip-avatar-changed'));
+    } catch (e) {
+      const msg = e?.message;
+      const key =
+        msg === 'file_too_big'
+          ? 'settings.avatar_error_size'
+          : msg === 'bad_mime'
+            ? 'settings.avatar_error_mime'
+            : msg === 'too_large'
+              ? 'settings.avatar_error_output'
+              : 'settings.avatar_error_decode';
+      showError(t(key), '');
+    }
+  });
+
+  col.appendChild(uploadBtn);
+  col.appendChild(removeBtn);
+  col.appendChild(fileInput);
+  row.appendChild(col);
+  block.appendChild(row);
+
+  const hint = document.createElement('p');
+  hint.className = 'settings-motion-hint';
+  hint.dataset.i18n = 'settings.avatar_hint';
+  hint.textContent = t('settings.avatar_hint');
+  block.appendChild(hint);
+
+  return block;
 }
 
 function buildAppearanceSection() {
@@ -480,6 +581,7 @@ function renderSettingsView() {
   wrap.appendChild(title);
   wrap.appendChild(nameLabel);
   wrap.appendChild(nameInput);
+  wrap.appendChild(buildAvatarSettingsSection());
   wrap.appendChild(idRow);
   wrap.appendChild(langLabel);
   wrap.appendChild(langRow);
@@ -607,7 +709,7 @@ function renderChatHubView() {
       item.type = 'button';
       item.className = `chat-hub-row glass ${row.online ? 'online' : 'offline'}`;
 
-      const avatar = createAvatarElement(row.blipId, 2);
+      const avatar = createAvatarElement(row.blipId, 2, { selfBlipId: state.config.blipId });
       const info = document.createElement('div');
       info.className = 'chat-hub-info';
       const name = document.createElement('span');
@@ -735,6 +837,15 @@ export function initUI(config, blipApi) {
       renderView(state.view || 'dial');
     } else if (mainContent) {
       applyI18n(mainContent);
+    }
+  });
+
+  window.addEventListener('blip-avatar-changed', () => {
+    if (!mainContent?.isConnected) return;
+    if (state.view === 'peers') renderView('peers');
+    else if (state.view === 'chat' && !state.activePeer) renderView('chat');
+    if (state.view === 'chat' && state.activePeer != null) {
+      state.chatViews.get(state.activePeer)?.refreshHeaderAvatar?.();
     }
   });
 
