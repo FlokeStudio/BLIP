@@ -40,8 +40,13 @@ const locales = {
     'status.connected': 'CONNECTED',
     'status.disconnected': 'DISCONNECTED',
     'nav.dial': 'DIAL',
+    'nav.chat': 'CHAT',
     'nav.peers': 'PEERS',
     'nav.settings': 'SETTINGS',
+    'chat.title': 'CHAT',
+    'chat.pick_peer': 'Open a peer from PEERS or dial an ID.',
+    'chat.no_active': 'No conversation selected.',
+    'call.connected': 'ON CALL',
   },
   ru: {
     'app.title': 'BLIP',
@@ -84,8 +89,13 @@ const locales = {
     'status.connected': 'ПОДКЛЮЧЕН',
     'status.disconnected': 'ОТКЛЮЧЕН',
     'nav.dial': 'НАБОР',
+    'nav.chat': 'ЧАТ',
     'nav.peers': 'АБОНЕНТЫ',
     'nav.settings': 'НАСТРОЙКИ',
+    'chat.title': 'ЧАТ',
+    'chat.pick_peer': 'Выбери абонента в АБОНЕНТЫ или набери ID.',
+    'chat.no_active': 'Чат не выбран.',
+    'call.connected': 'НА СВЯЗИ',
   },
 };
 

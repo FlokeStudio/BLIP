@@ -48,10 +48,37 @@ function createTitleBar() {
   return bar;
 }
 
+function ensureChatView(peerId) {
+  if (!state.chatViews.has(peerId)) {
+    const peer = state.peers.find((p) => p.blipId === peerId);
+    const chat = createChatView(
+      peerId,
+      state.config,
+      (to, text) => api.sendTcpMessage({ to, text }),
+      () => {
+        state.activePeer = null;
+        renderView('chat');
+      }
+    );
+    if (peer) chat.setPeerName(peer.displayName);
+    state.chatViews.set(peerId, chat);
+  }
+  return state.chatViews.get(peerId);
+}
+
+function updateNavActive() {
+  document.querySelectorAll('.nav-btn').forEach((btn) => {
+    const view = btn.dataset.view;
+    let active = view === state.view;
+    if (view === 'chat' && state.view === 'chat') active = true;
+    btn.classList.toggle('active', active);
+  });
+}
+
 function createNav(onNavigate) {
   const nav = document.createElement('nav');
   nav.className = 'side-nav glass';
-  ['dial', 'peers', 'settings'].forEach((key) => {
+  ['dial', 'peers', 'chat', 'settings'].forEach((key) => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'nav-btn';
@@ -187,9 +214,11 @@ function renderPeersView() {
         showPeerContextMenu(e, peer);
       });
 
-      row.addEventListener('dblclick', () => {
+      row.addEventListener('click', () => {
         if (peer.online) openChat(peer.blipId);
       });
+
+      row.style.cursor = peer.online ? 'pointer' : 'default';
 
       list.appendChild(row);
     });
@@ -361,17 +390,94 @@ function showError(title, hint) {
 function openChat(peerId) {
   state.activePeer = peerId;
   state.view = 'chat';
+  ensureChatView(peerId);
+  if (mainContent?.isConnected) {
+    renderView('chat');
+  } else {
+    render();
+  }
+}
 
-  if (!state.chatViews.has(peerId)) {
-    const peer = state.peers.find((p) => p.blipId === peerId);
-    const chat = createChatView(peerId, state.config, (to, text) =>
-      api.sendTcpMessage({ to, text })
-    );
-    if (peer) chat.setPeerName(peer.displayName);
-    state.chatViews.set(peerId, chat);
+function renderChatHubView() {
+  const wrap = document.createElement('div');
+  wrap.className = 'view chat-hub-view';
+
+  const title = document.createElement('h2');
+  title.className = 'section-title';
+  title.dataset.i18n = 'chat.title';
+  title.textContent = t('chat.title');
+
+  const list = document.createElement('div');
+  list.className = 'chat-hub-list';
+
+  const peerIds = new Set();
+  state.peers.forEach((p) => peerIds.add(p.blipId));
+  for (const id of state.chatViews.keys()) peerIds.add(id);
+
+  const rows = [...peerIds]
+    .map((id) => {
+      const peer = state.peers.find((p) => p.blipId === id);
+      const msgs = getMessages(id);
+      return {
+        blipId: id,
+        displayName: peer?.displayName || `BLIP-${id}`,
+        online: peer?.online ?? false,
+        lastMsg: msgs[msgs.length - 1],
+      };
+    })
+    .sort((a, b) => {
+      const ta = a.lastMsg?.timestamp ?? 0;
+      const tb = b.lastMsg?.timestamp ?? 0;
+      if (tb !== ta) return tb - ta;
+      if (a.online !== b.online) return a.online ? -1 : 1;
+      return a.blipId - b.blipId;
+    });
+
+  if (rows.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'hint';
+    empty.dataset.i18n = 'chat.pick_peer';
+    empty.textContent = t('chat.pick_peer');
+    list.appendChild(empty);
+  } else {
+    rows.forEach((row) => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = `chat-hub-row glass ${row.online ? 'online' : 'offline'}`;
+
+      const avatar = createAvatarElement(row.blipId, 2);
+      const info = document.createElement('div');
+      info.className = 'chat-hub-info';
+      const name = document.createElement('span');
+      name.className = 'peer-name';
+      name.textContent = row.displayName;
+      const idSpan = document.createElement('span');
+      idSpan.className = 'peer-id';
+      idSpan.textContent = `#${row.blipId}`;
+      info.appendChild(name);
+      info.appendChild(idSpan);
+
+      if (row.lastMsg) {
+        const preview = document.createElement('span');
+        preview.className = 'chat-hub-preview';
+        preview.textContent = row.lastMsg.text.slice(0, 48);
+        info.appendChild(preview);
+      }
+
+      const dot = document.createElement('span');
+      dot.className = `status-dot ${row.online ? 'online' : 'offline'}`;
+
+      item.appendChild(avatar);
+      item.appendChild(info);
+      item.appendChild(dot);
+      item.addEventListener('click', () => openChat(row.blipId));
+      list.appendChild(item);
+    });
   }
 
-  render();
+  wrap.appendChild(title);
+  wrap.appendChild(list);
+  return wrap;
 }
 
 function renderView(viewName) {
@@ -391,8 +497,13 @@ function renderView(viewName) {
       view = renderSettingsView();
       break;
     case 'chat': {
-      const chat = state.chatViews.get(state.activePeer);
-      view = chat?.el || renderDialView();
+      if (state.activePeer) {
+        const chat = ensureChatView(state.activePeer);
+        chat.renderMessages();
+        view = chat.el;
+      } else {
+        view = renderChatHubView();
+      }
       break;
     }
     default:
@@ -402,9 +513,7 @@ function renderView(viewName) {
   mainContent.appendChild(view);
   applyI18n(mainContent);
 
-  document.querySelectorAll('.nav-btn').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.view === viewName);
-  });
+  updateNavActive();
 }
 
 function render() {
@@ -417,8 +526,10 @@ function render() {
   layout.className = 'app-layout';
 
   const nav = createNav((view) => {
-    if (view === 'chat' && state.activePeer) renderView('chat');
-    else renderView(view);
+    if (view === 'chat' && state.view === 'chat' && state.activePeer) {
+      state.activePeer = null;
+    }
+    renderView(view);
   });
 
   mainContent = document.createElement('main');
@@ -483,25 +594,20 @@ export function updatePeers({ peers, occupiedIds }) {
     gridComponent.updateOccupied(occupiedIds.filter((id) => id !== state.config.blipId));
   }
 
-  if (state.view === 'peers' && mainContent) {
-    renderView('peers');
+  if ((state.view === 'peers' || state.view === 'chat') && mainContent) {
+    renderView(state.view);
   }
 }
 
 export function handleTcpMessage(msg) {
   const peerId = msg.from === state.config.blipId ? msg.to : msg.from;
-  if (!state.chatViews.has(peerId)) {
-    const chat = createChatView(peerId, state.config, (to, text) =>
-      api.sendTcpMessage({ to, text })
-    );
-    const peer = state.peers.find((p) => p.blipId === peerId);
-    if (peer) chat.setPeerName(peer.displayName);
-    state.chatViews.set(peerId, chat);
-  }
+  ensureChatView(peerId);
   state.chatViews.get(peerId)?.handleIncoming(msg);
 
   if (state.view !== 'chat' || state.activePeer !== peerId) {
-    /* notification could go here */
+    state.view = 'chat';
+    state.activePeer = peerId;
+    if (mainContent?.isConnected) renderView('chat');
   }
 }
 

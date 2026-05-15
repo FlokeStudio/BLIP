@@ -4,10 +4,23 @@ import { initUI, updatePeers, handleTcpMessage, getCallUI } from './ui.js';
 const api = {
   saveConfig: (data) => window.blip.saveConfig(data),
   sendTcpMessage: (payload) => window.blip.sendTcpMessage(payload),
-  initiateCall: (payload) => window.blip.initiateCall(payload),
-  callAccept: (payload) => window.blip.callAccept(payload),
+  initiateCall: (payload) =>
+    window.blip.initiateCall({
+      to: payload.to,
+      sdp: payload.sdp,
+      video: payload.video,
+    }),
+  callAccept: (payload) =>
+    window.blip.callAccept({
+      to: payload.to,
+      sdp: payload.sdp,
+    }),
   callReject: (payload) => window.blip.callReject(payload),
-  callCandidate: (payload) => window.blip.callCandidate(payload),
+  callCandidate: (payload) =>
+    window.blip.callCandidate({
+      to: payload.to,
+      candidate: payload.candidate?.toJSON?.() ?? payload.candidate,
+    }),
   callHangup: (payload) => window.blip.callHangup(payload),
 };
 
@@ -45,8 +58,8 @@ async function boot() {
   window.blip.onIncomingCall((data) => callUI.handleIncoming(data));
   window.blip.onCallAnswer((data) => callUI.handleAnswer(data));
   window.blip.onCallCandidate((data) => callUI.handleCandidate(data));
-  window.blip.onCallRejected(() => callUI.hide());
-  window.blip.onCallEnded(() => callUI.hide());
+  window.blip.onCallRejected((data) => callUI.handleRejected(data));
+  window.blip.onCallEnded((data) => callUI.handleEnded(data));
 }
 
 boot().catch((err) => {

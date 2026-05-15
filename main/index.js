@@ -131,19 +131,24 @@ function handleTcpPayload(msg, fromBlipId) {
       sendToRenderer('tcp-message', msg);
       break;
     case 'call-offer':
-      sendToRenderer('incoming-call', { ...msg, from: fromBlipId || msg.from });
+      sendToRenderer('incoming-call', {
+        ...msg,
+        from: msg.from ?? fromBlipId,
+        sdp: msg.sdp,
+        video: msg.video,
+      });
       break;
     case 'call-answer':
-      sendToRenderer('call-answer', msg);
+      sendToRenderer('call-answer', { ...msg, from: msg.from ?? fromBlipId });
       break;
     case 'call-candidate':
-      sendToRenderer('call-candidate', msg);
+      sendToRenderer('call-candidate', { ...msg, from: msg.from ?? fromBlipId });
       break;
     case 'call-reject':
-      sendToRenderer('call-rejected', msg);
+      sendToRenderer('call-rejected', { ...msg, from: msg.from ?? fromBlipId });
       break;
     case 'call-hangup':
-      sendToRenderer('call-ended', msg);
+      sendToRenderer('call-ended', { ...msg, from: msg.from ?? fromBlipId });
       break;
     default:
       break;

@@ -15,12 +15,22 @@ export function addMessage(peerId, msg) {
   return list;
 }
 
-export function createChatView(peerId, config, onSend) {
+export function createChatView(peerId, config, onSend, onBack) {
   const wrap = document.createElement('div');
   wrap.className = 'chat-view';
 
   const header = document.createElement('div');
   header.className = 'chat-header glass';
+
+  if (onBack) {
+    const backBtn = document.createElement('button');
+    backBtn.type = 'button';
+    backBtn.className = 'btn btn-accent chat-back-btn';
+    backBtn.textContent = '←';
+    backBtn.addEventListener('click', onBack);
+    header.appendChild(backBtn);
+  }
+
   const avatar = createAvatarElement(peerId, 3);
   const meta = document.createElement('div');
   meta.className = 'chat-peer-meta';

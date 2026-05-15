@@ -5,6 +5,20 @@ import { createAvatarElement } from './avatar.js';
 const ICE_SERVERS = [];
 
 let activeCall = null;
+let pendingCandidates = [];
+let pendingOffer = null;
+
+function normalizeSdp(sdp) {
+  if (!sdp) return null;
+  if (typeof sdp === 'string') return { type: 'offer', sdp };
+  return { type: sdp.type, sdp: sdp.sdp };
+}
+
+function normalizeCandidate(candidate) {
+  if (!candidate) return null;
+  if (candidate.candidate !== undefined) return candidate;
+  return null;
+}
 
 function createPeerConnection(onRemoteStream) {
   const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
@@ -15,7 +29,14 @@ function createPeerConnection(onRemoteStream) {
 
   pc.onicecandidate = (e) => {
     if (e.candidate && activeCall?.onCandidate) {
-      activeCall.onCandidate(e.candidate);
+      const json = e.candidate.toJSON ? e.candidate.toJSON() : e.candidate;
+      activeCall.onCandidate(json);
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === 'failed') {
+      console.error('[call] connection failed');
     }
   };
 
@@ -125,15 +146,21 @@ export function createCallUI(config, api) {
   let localStream = null;
   let pc = null;
   let peerId = null;
+  let withVideo = false;
   let muted = false;
   let deafened = false;
   let timerInterval = null;
   let callStart = null;
-  let pulseFrame = 0;
   let pulseTimer = null;
+  let incomingOffer = null;
 
   function show() {
     overlay.classList.remove('hidden');
+  }
+
+  function setConnectedStatus() {
+    statusEl.dataset.i18n = 'call.connected';
+    statusEl.textContent = t('call.connected');
   }
 
   function hide() {
@@ -145,6 +172,10 @@ export function createCallUI(config, api) {
     clearInterval(timerInterval);
     clearInterval(pulseTimer);
     pulseTimer = null;
+    timerInterval = null;
+    pendingCandidates = [];
+    pendingOffer = null;
+    incomingOffer = null;
     if (localStream) {
       localStream.getTracks().forEach((tr) => tr.stop());
       localStream = null;
@@ -156,12 +187,17 @@ export function createCallUI(config, api) {
     localVideo.srcObject = null;
     remoteVideo.srcObject = null;
     activeCall = null;
-    inner.classList.remove('pulse-incoming');
+    inner.style.borderColor = '';
     acceptBtn.classList.add('hidden');
     rejectBtn.classList.add('hidden');
     endBtn.classList.remove('hidden');
     muteBtn.classList.remove('hidden');
     deafenBtn.classList.remove('hidden');
+  }
+
+  function isForCurrentPeer(data) {
+    if (!peerId || !data?.from) return true;
+    return Number(data.from) === Number(peerId);
   }
 
   async function getMedia(video) {
@@ -172,6 +208,7 @@ export function createCallUI(config, api) {
   }
 
   function startTimer() {
+    if (timerInterval) return;
     callStart = Date.now();
     timerInterval = setInterval(() => {
       timerEl.textContent = formatDuration(Date.now() - callStart);
@@ -179,29 +216,77 @@ export function createCallUI(config, api) {
   }
 
   function startIncomingPulse() {
-    pulseFrame = 0;
+    clearInterval(pulseTimer);
     pulseTimer = setInterval(() => {
-      pulseFrame = (pulseFrame + 1) % 3;
-      inner.style.borderColor = pulseFrame % 2 === 0 ? '#00ffc8' : '#ff3366';
+      inner.style.borderColor = inner.style.borderColor === '#00ffc8' ? '#ff3366' : '#00ffc8';
     }, 200);
   }
 
-  async function startOutgoing(targetId, withVideo) {
+  async function flushPendingCandidates() {
+    if (!pc?.remoteDescription) return;
+    for (const c of pendingCandidates) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(c));
+      } catch (err) {
+        console.warn('[call] ICE candidate:', err.message);
+      }
+    }
+    pendingCandidates = [];
+  }
+
+  async function setRemoteDescription(sdp) {
+    const desc = normalizeSdp(sdp);
+    if (!desc?.type || !desc?.sdp) throw new Error('Invalid SDP');
+    await pc.setRemoteDescription(desc);
+    await flushPendingCandidates();
+  }
+
+  async function addIceCandidate(candidate) {
+    const init = normalizeCandidate(candidate);
+    if (!init?.candidate) return;
+    if (!pc) {
+      pendingCandidates.push(init);
+      return;
+    }
+    if (!pc.remoteDescription) {
+      pendingCandidates.push(init);
+      return;
+    }
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(init));
+    } catch (err) {
+      console.warn('[call] addIceCandidate:', err.message);
+    }
+  }
+
+  function bindActiveCall(id) {
+    activeCall = {
+      peerId: id,
+      pc,
+      onCandidate: (candidate) => {
+        api.callCandidate({ to: id, candidate });
+      },
+    };
+  }
+
+  async function startOutgoing(targetId, video) {
     peerId = targetId;
+    withVideo = video;
     show();
     statusEl.dataset.i18n = 'call.outgoing';
     statusEl.textContent = t('call.outgoing');
-    videoWrap.classList.toggle('hidden', !withVideo);
-    voiceWrap.classList.toggle('hidden', withVideo);
+    videoWrap.classList.toggle('hidden', !video);
+    voiceWrap.classList.toggle('hidden', video);
     avatarSlot.innerHTML = '';
     avatarSlot.appendChild(createAvatarElement(targetId, 6));
 
     try {
-      localStream = await getMedia(withVideo);
-      if (withVideo) localVideo.srcObject = localStream;
+      localStream = await getMedia(video);
+      if (video) localVideo.srcObject = localStream;
 
       pc = createPeerConnection((stream) => {
         remoteVideo.srcObject = stream;
+        setConnectedStatus();
         startTimer();
       });
 
@@ -210,28 +295,67 @@ export function createCallUI(config, api) {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      activeCall = {
-        peerId,
-        pc,
-        onCandidate: (candidate) => {
-          api.callCandidate({ to: peerId, candidate });
-        },
-      };
+      bindActiveCall(targetId);
 
-      await api.initiateCall({
-        to: peerId,
+      const result = await api.initiateCall({
+        to: targetId,
         sdp: pc.localDescription,
-        video: withVideo,
+        video,
       });
+      if (!result?.ok) throw new Error(result?.error || 'Call failed');
     } catch (err) {
-      console.error(err);
+      console.error('[call] outgoing:', err);
+      hide();
+    }
+  }
+
+  async function acceptIncoming() {
+    clearInterval(pulseTimer);
+    inner.style.borderColor = '';
+    acceptBtn.classList.add('hidden');
+    rejectBtn.classList.add('hidden');
+    endBtn.classList.remove('hidden');
+    muteBtn.classList.remove('hidden');
+    deafenBtn.classList.remove('hidden');
+
+    const offer = incomingOffer;
+    if (!offer) return;
+
+    try {
+      localStream = await getMedia(withVideo);
+      if (withVideo) localVideo.srcObject = localStream;
+
+      pc = createPeerConnection((stream) => {
+        remoteVideo.srcObject = stream;
+        setConnectedStatus();
+        startTimer();
+      });
+
+      localStream.getTracks().forEach((tr) => pc.addTrack(tr, localStream));
+
+      await setRemoteDescription(offer);
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      bindActiveCall(peerId);
+
+      const result = await api.callAccept({ to: peerId, sdp: pc.localDescription });
+      if (!result?.ok) throw new Error(result?.error || 'Accept failed');
+    } catch (err) {
+      console.error('[call] accept:', err);
       hide();
     }
   }
 
   async function handleIncoming(data) {
-    peerId = data.from;
-    const withVideo = data.video ?? false;
+    const from = Number(data.from);
+    if (!from) return;
+
+    peerId = from;
+    withVideo = data.video ?? false;
+    incomingOffer = data.sdp;
+    pendingCandidates = [];
+
     show();
     sounds.incomingCall();
     statusEl.dataset.i18n = 'call.incoming';
@@ -247,65 +371,43 @@ export function createCallUI(config, api) {
     avatarSlot.innerHTML = '';
     avatarSlot.appendChild(createAvatarElement(peerId, 6));
 
-    activeCall = { peerId, pendingOffer: data.sdp };
-
-    acceptBtn.onclick = async () => {
-      clearInterval(pulseTimer);
-      inner.style.borderColor = '';
-      acceptBtn.classList.add('hidden');
-      rejectBtn.classList.add('hidden');
-      endBtn.classList.remove('hidden');
-      muteBtn.classList.remove('hidden');
-      deafenBtn.classList.remove('hidden');
-
-      try {
-        localStream = await getMedia(withVideo);
-        if (withVideo) localVideo.srcObject = localStream;
-
-        pc = createPeerConnection((stream) => {
-          remoteVideo.srcObject = stream;
-          startTimer();
-        });
-
-        localStream.getTracks().forEach((tr) => pc.addTrack(tr, localStream));
-
-        await pc.setRemoteDescription(data.sdp);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-
-        activeCall = {
-          peerId,
-          pc,
-          onCandidate: (candidate) => api.callCandidate({ to: peerId, candidate }),
-        };
-
-        await api.callAccept({ to: peerId, sdp: pc.localDescription });
-      } catch (err) {
-        console.error(err);
-        hide();
-      }
-    };
-
-    rejectBtn.onclick = async () => {
-      await api.callReject({ to: peerId });
-      sounds.callEnd();
-      hide();
-    };
+    activeCall = { peerId, pending: true };
   }
 
+  acceptBtn.addEventListener('click', () => acceptIncoming());
+
+  rejectBtn.addEventListener('click', async () => {
+    if (peerId) await api.callReject({ to: peerId });
+    sounds.callEnd();
+    hide();
+  });
+
   async function handleAnswer(data) {
-    if (!pc) return;
-    await pc.setRemoteDescription(data.sdp);
-    startTimer();
+    if (!isForCurrentPeer(data) || !pc) return;
+    try {
+      await setRemoteDescription(data.sdp);
+      setConnectedStatus();
+      startTimer();
+    } catch (err) {
+      console.error('[call] answer:', err);
+    }
   }
 
   async function handleCandidate(data) {
-    if (!pc || !data.candidate) return;
-    try {
-      await pc.addIceCandidate(data.candidate);
-    } catch {
-      /* may arrive before remote description */
-    }
+    if (!isForCurrentPeer(data)) return;
+    await addIceCandidate(data.candidate);
+  }
+
+  function handleRejected(data) {
+    if (!isForCurrentPeer(data)) return;
+    sounds.callEnd();
+    hide();
+  }
+
+  function handleEnded(data) {
+    if (!isForCurrentPeer(data)) return;
+    sounds.callEnd();
+    hide();
   }
 
   muteBtn.addEventListener('click', () => {
@@ -334,8 +436,11 @@ export function createCallUI(config, api) {
     handleIncoming,
     handleAnswer,
     handleCandidate,
+    handleRejected,
+    handleEnded,
     hide,
     end: hide,
+    isActive: () => !!pc || !!incomingOffer,
   };
 }
 
