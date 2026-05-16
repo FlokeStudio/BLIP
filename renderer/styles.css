@@ -801,6 +801,26 @@ body {
   min-width: 160px;
 }
 
+.settings-tray-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-tray-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--blip-text);
+}
+
+.settings-tray-toggle-row input {
+  width: auto;
+  accent-color: var(--blip-accent);
+}
+
 .section-subtitle {
   margin-top: 8px;
   font-size: 12px;

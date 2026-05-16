@@ -11,6 +11,8 @@ const DEFAULT_CONFIG = {
   tcpPort: 42070,
   themeId: 'dark-signal',
   animatedBgId: 'none',
+  /** When true, the main window close button hides to tray instead of exiting (Windows default on). */
+  closeToTray: process.platform === 'win32',
 };
 
 let configPath = null;

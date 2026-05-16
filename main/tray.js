@@ -25,30 +25,57 @@ function createTrayIcon() {
   return nativeImage.createFromBuffer(canvas, { width: size, height: size });
 }
 
-export function createTray(mainWindow) {
+export function destroyTray() {
+  if (!tray) return;
+  try {
+    tray.removeAllListeners();
+    tray.destroy();
+  } catch {
+    /* ignore */
+  }
+  tray = null;
+}
+
+/**
+ * @param {{
+ *   getMainWindow: () => import('electron').BrowserWindow | null;
+ *   tooltip?: string;
+ *   onQuit: () => void | Promise<void>;
+ *   labels?: { show?: string; quit?: string };
+ * }} opts
+ */
+export function createTray(opts) {
+  destroyTray();
+  const { getMainWindow, tooltip, onQuit, labels } = opts;
+  const L = { show: labels?.show || 'Show', quit: labels?.quit || 'Quit' };
   try {
     tray = new Tray(createTrayIcon());
-    const contextMenu = Menu.buildFromTemplate([
+    tray.setToolTip(tooltip || 'BLIP');
+
+    const showMain = () => {
+      const w = getMainWindow();
+      if (!w || w.isDestroyed()) return;
+      if (!w.isVisible()) w.show();
+      w.focus();
+    };
+
+    const menu = Menu.buildFromTemplate([
       {
-        label: 'BLIP',
-        click: () => {
-          mainWindow?.show();
-          mainWindow?.focus();
-        },
+        label: L.show,
+        click: showMain,
       },
       { type: 'separator' },
       {
-        label: 'Quit',
-        click: () => mainWindow?.close(),
+        label: L.quit,
+        click: () => {
+          void onQuit();
+        },
       },
     ]);
-    tray.setToolTip('BLIP');
-    tray.setContextMenu(contextMenu);
-    tray.on('click', () => {
-      mainWindow?.show();
-      mainWindow?.focus();
-    });
+    tray.setContextMenu(menu);
+    tray.on('click', showMain);
+    tray.on('double-click', showMain);
   } catch {
-    /* tray optional on some platforms */
+    tray = null;
   }
 }

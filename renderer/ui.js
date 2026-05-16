@@ -402,6 +402,49 @@ function buildAvatarSettingsSection() {
   return block;
 }
 
+function buildCloseToTraySection() {
+  if (typeof window === 'undefined' || window.blip?.platform !== 'win32') {
+    return null;
+  }
+
+  const block = document.createElement('div');
+  block.className = 'settings-tray-wrap';
+
+  const h = document.createElement('h3');
+  h.className = 'section-subtitle';
+  h.dataset.i18n = 'settings.tray_title';
+  h.textContent = t('settings.tray_title');
+  block.appendChild(h);
+
+  const row = document.createElement('label');
+  row.className = 'settings-tray-toggle-row';
+
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = !!state.config.closeToTray;
+
+  const span = document.createElement('span');
+  span.dataset.i18n = 'settings.close_to_tray';
+  span.textContent = t('settings.close_to_tray');
+
+  row.appendChild(cb);
+  row.appendChild(span);
+
+  cb.addEventListener('change', async () => {
+    state.config = await api.saveConfig({ closeToTray: cb.checked });
+  });
+
+  block.appendChild(row);
+
+  const hint = document.createElement('p');
+  hint.className = 'settings-motion-hint';
+  hint.dataset.i18n = 'settings.close_to_tray_hint';
+  hint.textContent = t('settings.close_to_tray_hint');
+  block.appendChild(hint);
+
+  return block;
+}
+
 function buildAppearanceSection() {
   const block = document.createElement('div');
   block.className = 'settings-appearance-wrap';
@@ -585,6 +628,8 @@ function renderSettingsView() {
   wrap.appendChild(idRow);
   wrap.appendChild(langLabel);
   wrap.appendChild(langRow);
+  const traySection = buildCloseToTraySection();
+  if (traySection) wrap.appendChild(traySection);
   wrap.appendChild(buildAppearanceSection());
   wrap.appendChild(aboutTitle);
   wrap.appendChild(aboutLine);

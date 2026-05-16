@@ -6,7 +6,7 @@ import { Discovery } from './discovery.js';
 import { createTcpServer } from './tcp-server.js';
 import { connectToPeer, sendOnSocket, pingPeer } from './tcp-client.js';
 import { loadConfig, saveConfig, initConfigPath } from './config.js';
-import { createTray } from './tray.js';
+import { createTray, destroyTray } from './tray.js';
 import { resolveBuildAsset } from './paths.js';
 import { resolvePorts } from './ports.js';
 
@@ -43,6 +43,8 @@ let discovery = null;
 let tcpServer = null;
 let config = null;
 const peerSockets = new Map();
+/** Set in `before-quit` so the main window can distinguish Quit from close-to-tray hide. */
+let appIsQuitting = false;
 
 function getRendererUrl() {
   if (useViteDev) return 'http://localhost:5173';
@@ -94,6 +96,23 @@ function createWindow() {
   if (!app.isPackaged && process.env.BLIP_DEVTOOLS === '1') {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
+
+  mainWindow.on('close', (e) => {
+    if (appIsQuitting) return;
+    if (config?.closeToTray) {
+      e.preventDefault();
+      if (!mainWindow.isDestroyed()) mainWindow.hide();
+      return;
+    }
+    try {
+      if (callWindow && !callWindow.isDestroyed()) {
+        callWindow.destroy();
+        callWindow = null;
+      }
+    } catch {
+      /* ignore */
+    }
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -307,12 +326,33 @@ async function restartNetwork() {
   await bootstrapNetworking();
 }
 
+function installTray() {
+  const meta = loadAppMetadata();
+  const trayLabels =
+    config.language === 'ru'
+      ? { show: 'Показать', quit: 'Выход' }
+      : { show: 'Show', quit: 'Quit' };
+  createTray({
+    getMainWindow: () => mainWindow,
+    tooltip: `${meta.displayName || 'BLIP'} — local network`,
+    labels: trayLabels,
+    onQuit: async () => {
+      await stopNetwork();
+      app.quit();
+    },
+  });
+}
+
 function setupIpc() {
   ipcMain.handle('get-config', () => config);
   ipcMain.handle('save-config', (_, updates) => {
+    const prevLang = config?.language;
     config = saveConfig(updates);
     discovery?.updateConfig(config);
     discovery?.announce();
+    if (typeof updates?.language === 'string' && updates.language !== prevLang) {
+      installTray();
+    }
     return config;
   });
   ipcMain.handle('get-peers', () => ({
@@ -498,11 +538,16 @@ app.whenReady().then(async () => {
 
   setupIpc();
   createWindow();
-  createTray(mainWindow);
+  installTray();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+app.on('before-quit', () => {
+  appIsQuitting = true;
+  destroyTray();
 });
 
 app.on('window-all-closed', () => {

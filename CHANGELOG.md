@@ -18,6 +18,7 @@ Release **version numbers** track [`app-metadata.json`](app-metadata.json) (sync
 - Static **`docs/index.html`** landing for GitHub Pages (`https://krwg.github.io/BLIP/`).
 - **Themes**: 5 light + 5 dark color presets; **10 animated backgrounds** (+ none); persisted in `blip-config.json`; respects reduced-motion.
 - **Settings**: optional **local profile picture** (PNG/WebP/JPEG, capped size); peers and chat hub show it for your own BLIP ID; **Remove** restores the deterministic generated avatar.
+- **Windows tray**: **Show** / **Выход** context menu, branding tooltip, **Quit** runs full shutdown; **Close hides to tray** when enabled (default on Windows; setting in Settings).
 
 ### Changed
 

@@ -43,6 +43,10 @@ const locales = {
     'settings.theme_dark': 'Dark themes',
     'settings.bg_title': 'Animated background',
     'settings.motion_hint': 'Background motion pauses when the OS requests reduced motion.',
+    'settings.tray_title': 'System tray',
+    'settings.close_to_tray': 'Keep running in tray when I close the window',
+    'settings.close_to_tray_hint':
+      'Tray menu: Show opens BLIP again; Quit stops networking and exits completely.',
     'settings.avatar_title': 'Profile picture',
     'settings.avatar_upload': 'Upload image',
     'settings.avatar_remove': 'Use generated avatar',
@@ -112,6 +116,10 @@ const locales = {
     'settings.theme_dark': 'Тёмные темы',
     'settings.bg_title': 'Анимированный фон',
     'settings.motion_hint': 'Анимация фона отключается, если в системе включено «уменьшить движение».',
+    'settings.tray_title': 'Трей',
+    'settings.close_to_tray': 'Оставаться в трее при закрытии окна',
+    'settings.close_to_tray_hint':
+      'Меню в трее: «Показать» снова открывает BLIP; «Выход» останавливает сеть и полностью закрывает приложение.',
     'settings.avatar_title': 'Фото профиля',
     'settings.avatar_upload': 'Загрузить',
     'settings.avatar_remove': 'Сгенерированный аватар',
