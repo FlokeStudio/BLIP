@@ -7,6 +7,7 @@ import { createTcpServer } from './tcp-server.js';
 import { connectToPeer, sendOnSocket, pingPeer } from './tcp-client.js';
 import { loadConfig, saveConfig, initConfigPath } from './config.js';
 import { createTray, destroyTray } from './tray.js';
+import { setupAutoUpdater, checkForUpdatesNow, quitAndInstallUpdater } from './updater.js';
 import { resolveBuildAsset } from './paths.js';
 import { resolvePorts } from './ports.js';
 
@@ -467,7 +468,16 @@ function setupIpc() {
     return { taken: responds };
   });
 
-  ipcMain.handle('get-app-metadata', () => loadAppMetadata());
+  ipcMain.handle('get-app-metadata', () => ({
+    ...loadAppMetadata(),
+    isPackaged: app.isPackaged,
+  }));
+
+  ipcMain.handle('check-for-updates', () => checkForUpdatesNow());
+  ipcMain.handle('quit-and-install', () => {
+    quitAndInstallUpdater();
+    return { ok: true };
+  });
 
   ipcMain.handle('open-external', async (_, url) => {
     if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return { ok: false };
@@ -539,6 +549,7 @@ app.whenReady().then(async () => {
   setupIpc();
   createWindow();
   installTray();
+  setupAutoUpdater(() => mainWindow);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

@@ -1,6 +1,11 @@
 appId: com.blip.messenger
 productName: BLIP
 copyright: Copyright © 2026 BLIP
+publish:
+  - provider: github
+    owner: krwg
+    repo: BLIP
+    releaseType: release
 directories:
   output: dist-electron
   buildResources: build

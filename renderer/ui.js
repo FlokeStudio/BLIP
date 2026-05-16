@@ -28,7 +28,12 @@ let state = {
   view: 'grid',
   activePeer: null,
   chatViews: new Map(),
+  /** `null` = no subsection selected (placeholder in content column). */
+  settingsSection: null,
 };
+
+/** Last payload from main `update-status` (auto-updater). */
+let lastUpdateStatus = null;
 
 let rootEl = null;
 let mainContent = null;
@@ -452,12 +457,6 @@ function buildAppearanceSection() {
   const curTheme = normalizeThemeId(state.config.themeId);
   const curBg = normalizeBgId(state.config.animatedBgId);
 
-  const h = document.createElement('h3');
-  h.className = 'section-subtitle';
-  h.dataset.i18n = 'settings.appearance';
-  h.textContent = t('settings.appearance');
-  block.appendChild(h);
-
   const lightLbl = document.createElement('span');
   lightLbl.className = 'settings-sub-label';
   lightLbl.dataset.i18n = 'settings.theme_light';
@@ -533,14 +532,23 @@ function buildAppearanceSection() {
   return block;
 }
 
-function renderSettingsView() {
-  const wrap = document.createElement('div');
-  wrap.className = 'view settings-view';
+function getSettingsSectionIds() {
+  const ids = ['profile', 'appearance', 'system', 'updates', 'about'];
+  if (typeof window !== 'undefined' && window.blip?.platform !== 'win32') {
+    return ids.filter((id) => id !== 'system');
+  }
+  return ids;
+}
 
-  const title = document.createElement('h2');
-  title.className = 'section-title';
-  title.dataset.i18n = 'settings.title';
-  title.textContent = t('settings.title');
+function buildSettingsProfilePanel() {
+  const frag = document.createElement('div');
+  frag.className = 'settings-panel';
+
+  const h = document.createElement('h2');
+  h.className = 'settings-panel-title';
+  h.dataset.i18n = 'settings.section_profile';
+  h.textContent = t('settings.section_profile');
+  frag.appendChild(h);
 
   const nameLabel = document.createElement('label');
   nameLabel.dataset.i18n = 'settings.name';
@@ -592,10 +600,24 @@ function renderSettingsView() {
     await api.saveConfig({ displayName: name });
   });
 
-  const aboutTitle = document.createElement('h3');
-  aboutTitle.className = 'section-subtitle';
-  aboutTitle.dataset.i18n = 'settings.about_title';
-  aboutTitle.textContent = t('settings.about_title');
+  frag.appendChild(nameLabel);
+  frag.appendChild(nameInput);
+  frag.appendChild(buildAvatarSettingsSection());
+  frag.appendChild(idRow);
+  frag.appendChild(langLabel);
+  frag.appendChild(langRow);
+  return frag;
+}
+
+function buildSettingsAboutPanel() {
+  const frag = document.createElement('div');
+  frag.className = 'settings-panel';
+
+  const h = document.createElement('h2');
+  h.className = 'settings-panel-title';
+  h.dataset.i18n = 'settings.section_about';
+  h.textContent = t('settings.section_about');
+  frag.appendChild(h);
 
   const aboutLine = document.createElement('p');
   aboutLine.className = 'settings-about-line';
@@ -621,20 +643,225 @@ function renderSettingsView() {
     }
   }).catch(() => {});
 
-  wrap.appendChild(title);
-  wrap.appendChild(nameLabel);
-  wrap.appendChild(nameInput);
-  wrap.appendChild(buildAvatarSettingsSection());
-  wrap.appendChild(idRow);
-  wrap.appendChild(langLabel);
-  wrap.appendChild(langRow);
-  const traySection = buildCloseToTraySection();
-  if (traySection) wrap.appendChild(traySection);
+  frag.appendChild(aboutLine);
+  frag.appendChild(aboutVersion);
+  frag.appendChild(githubBtn);
+  return frag;
+}
+
+function buildSettingsSystemPanel() {
+  const frag = document.createElement('div');
+  frag.className = 'settings-panel';
+
+  const h = document.createElement('h2');
+  h.className = 'settings-panel-title';
+  h.dataset.i18n = 'settings.section_system';
+  h.textContent = t('settings.section_system');
+  frag.appendChild(h);
+
+  const tray = buildCloseToTraySection();
+  if (tray) {
+    frag.appendChild(tray);
+  } else {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.dataset.i18n = 'settings.system_na';
+    p.textContent = t('settings.system_na');
+    frag.appendChild(p);
+  }
+  return frag;
+}
+
+function buildAppearancePanelWithTitle() {
+  const wrap = document.createElement('div');
+  wrap.className = 'settings-panel';
+  const h = document.createElement('h2');
+  h.className = 'settings-panel-title';
+  h.dataset.i18n = 'settings.section_appearance';
+  h.textContent = t('settings.section_appearance');
+  wrap.appendChild(h);
   wrap.appendChild(buildAppearanceSection());
-  wrap.appendChild(aboutTitle);
-  wrap.appendChild(aboutLine);
-  wrap.appendChild(aboutVersion);
-  wrap.appendChild(githubBtn);
+  return wrap;
+}
+
+function formatUpdateStatusText() {
+  const u = lastUpdateStatus;
+  if (!u) return t('settings.updates_status_idle');
+  switch (u.state) {
+    case 'checking':
+      return t('settings.updates_status_checking');
+    case 'none':
+      return t('settings.updates_status_latest');
+    case 'available':
+      return t('settings.updates_status_available').replace('{v}', u.version || '—');
+    case 'progress':
+      return t('settings.updates_status_progress').replace('{p}', String(u.percent ?? 0));
+    case 'downloaded':
+      return t('settings.updates_status_downloaded').replace('{v}', u.version || '—');
+    case 'error':
+      return t('settings.updates_status_error').replace('{m}', u.message || '');
+    default:
+      return t('settings.updates_status_idle');
+  }
+}
+
+function buildSettingsUpdatesPanel() {
+  const frag = document.createElement('div');
+  frag.className = 'settings-panel';
+
+  const h = document.createElement('h2');
+  h.className = 'settings-panel-title';
+  h.dataset.i18n = 'settings.section_updates';
+  h.textContent = t('settings.section_updates');
+  frag.appendChild(h);
+
+  const verLine = document.createElement('p');
+  verLine.className = 'settings-about-version';
+  frag.appendChild(verLine);
+
+  const statusLine = document.createElement('p');
+  statusLine.className = 'settings-update-status';
+  frag.appendChild(statusLine);
+
+  const actions = document.createElement('div');
+  actions.className = 'settings-updates-actions';
+
+  const checkBtn = document.createElement('button');
+  checkBtn.type = 'button';
+  checkBtn.className = 'btn btn-accent';
+  checkBtn.disabled = true;
+  checkBtn.dataset.i18n = 'settings.updates_check';
+  checkBtn.textContent = t('settings.updates_check');
+  checkBtn.addEventListener('click', async () => {
+    if (!window.blip.checkForUpdates) return;
+    lastUpdateStatus = { state: 'checking' };
+    delete statusLine.dataset.i18n;
+    statusLine.textContent = formatUpdateStatusText();
+    const r = await window.blip.checkForUpdates();
+    if (r?.skipped) {
+      lastUpdateStatus = null;
+      statusLine.dataset.i18n = 'settings.updates_dev_only';
+      statusLine.textContent = t('settings.updates_dev_only');
+    } else {
+      statusLine.textContent = formatUpdateStatusText();
+    }
+  });
+
+  const releasesBtn = document.createElement('button');
+  releasesBtn.type = 'button';
+  releasesBtn.className = 'btn btn-lang';
+  releasesBtn.dataset.i18n = 'settings.updates_releases';
+  releasesBtn.textContent = t('settings.updates_releases');
+  releasesBtn.addEventListener('click', () => {
+    window.blip.openExternal?.('https://github.com/krwg/BLIP/releases');
+  });
+
+  const installBtn = document.createElement('button');
+  installBtn.type = 'button';
+  installBtn.className = 'btn btn-lang';
+  installBtn.dataset.i18n = 'settings.updates_install';
+  installBtn.textContent = t('settings.updates_install');
+  installBtn.disabled = lastUpdateStatus?.state !== 'downloaded';
+  installBtn.addEventListener('click', () => {
+    window.blip.quitAndInstall?.();
+  });
+
+  actions.appendChild(checkBtn);
+  actions.appendChild(releasesBtn);
+  actions.appendChild(installBtn);
+  frag.appendChild(actions);
+
+  window.blip.getAppMetadata?.().then((meta) => {
+    verLine.textContent = `v${meta?.version ?? '—'}`;
+    if (!meta?.isPackaged) {
+      statusLine.dataset.i18n = 'settings.updates_dev_only';
+      statusLine.textContent = t('settings.updates_dev_only');
+      checkBtn.disabled = true;
+      installBtn.disabled = true;
+    } else {
+      checkBtn.disabled = false;
+      delete statusLine.dataset.i18n;
+      statusLine.textContent = formatUpdateStatusText();
+      installBtn.disabled = lastUpdateStatus?.state !== 'downloaded';
+    }
+  }).catch(() => {});
+
+  return frag;
+}
+
+function buildSettingsPlaceholderPanel() {
+  const wrap = document.createElement('div');
+  wrap.className = 'settings-panel settings-panel--empty';
+
+  const h = document.createElement('h2');
+  h.className = 'section-title';
+  h.dataset.i18n = 'settings.title';
+  h.textContent = t('settings.title');
+
+  const p = document.createElement('p');
+  p.className = 'hint';
+  p.dataset.i18n = 'settings.pick_section_hint';
+  p.textContent = t('settings.pick_section_hint');
+
+  wrap.appendChild(h);
+  wrap.appendChild(p);
+  return wrap;
+}
+
+function renderSettingsMainPanel() {
+  if (state.settingsSection == null) {
+    return buildSettingsPlaceholderPanel();
+  }
+  switch (state.settingsSection) {
+    case 'profile':
+      return buildSettingsProfilePanel();
+    case 'appearance':
+      return buildAppearancePanelWithTitle();
+    case 'system':
+      return buildSettingsSystemPanel();
+    case 'updates':
+      return buildSettingsUpdatesPanel();
+    case 'about':
+      return buildSettingsAboutPanel();
+    default:
+      return buildSettingsPlaceholderPanel();
+  }
+}
+
+function renderSettingsNavAside() {
+  const aside = document.createElement('aside');
+  aside.className = 'settings-shell__nav glass';
+
+  for (const id of getSettingsSectionIds()) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `btn settings-nav-btn${state.settingsSection === id ? ' selected' : ''}`;
+    b.dataset.i18n = `settings.section_${id}`;
+    b.textContent = t(`settings.section_${id}`);
+    b.addEventListener('click', () => {
+      state.settingsSection = id;
+      renderView('settings');
+    });
+    aside.appendChild(b);
+  }
+  return aside;
+}
+
+function renderSettingsView() {
+  const wrap = document.createElement('div');
+  wrap.className = 'view settings-view';
+
+  const shell = document.createElement('div');
+  shell.className = 'settings-shell';
+
+  const aside = renderSettingsNavAside();
+  const main = document.createElement('div');
+  main.className = 'settings-shell__main';
+  main.appendChild(renderSettingsMainPanel());
+
+  shell.appendChild(aside);
+  shell.appendChild(main);
+  wrap.appendChild(shell);
   return wrap;
 }
 
@@ -676,6 +903,7 @@ function showGridView(isChange = false) {
 
       setTimeout(() => {
         if (isChange) {
+          state.settingsSection = 'profile';
           renderView('settings');
         } else {
           render();
@@ -838,6 +1066,9 @@ function render() {
     if (view === 'chat' && state.view === 'chat' && state.activePeer) {
       state.activePeer = null;
     }
+    if (view === 'settings') {
+      state.settingsSection = null;
+    }
     renderView(view);
   });
 
@@ -884,6 +1115,15 @@ export function initUI(config, blipApi) {
       applyI18n(mainContent);
     }
   });
+
+  if (typeof window.blip.onUpdateStatus === 'function') {
+    window.blip.onUpdateStatus((payload) => {
+      lastUpdateStatus = payload;
+      if (state.view === 'settings' && state.settingsSection === 'updates') {
+        renderView('settings');
+      }
+    });
+  }
 
   window.addEventListener('blip-avatar-changed', () => {
     if (!mainContent?.isConnected) return;

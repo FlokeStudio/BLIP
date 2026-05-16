@@ -17,6 +17,13 @@ contextBridge.exposeInMainWorld('blip', {
   checkIdConflict: (blipId) => ipcRenderer.invoke('check-id-conflict', blipId),
   openCallOutgoing: (payload) => ipcRenderer.invoke('open-call-outgoing', payload),
   closeCallWindow: () => ipcRenderer.invoke('close-call-window'),
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  quitAndInstall: () => ipcRenderer.invoke('quit-and-install'),
+  onUpdateStatus: (cb) => {
+    const handler = (_, data) => cb(data);
+    ipcRenderer.on('update-status', handler);
+    return () => ipcRenderer.removeListener('update-status', handler);
+  },
   onPeersUpdated: (cb) => {
     const handler = (_, peers) => cb(peers);
     ipcRenderer.on('peers-updated', handler);

@@ -9,20 +9,20 @@ Release **version numbers** track [`app-metadata.json`](app-metadata.json) (sync
 
 ## [Unreleased]
 
+## [0.1.5] — Relay
+
 ### Added
 
-- OSS hygiene: Contributing guide (`CONTRIBUTING.md`), Code of Conduct, security policy (`SECURITY.md`), root changelog, architecture doc (`docs/ARCHITECTURE.md`).
-- `.github/workflows/ci.yml` — `npm ci` + `npm run build` on push/PR to `main`/`master`.
-- Issue / PR templates, Dependabot (npm + GitHub Actions), `.nvmrc`, `engines.node` in `package.json`.
-- Tracked backlog files under `issues/` (removed from `.gitignore`).
-- Static **`docs/index.html`** landing for GitHub Pages (`https://krwg.github.io/BLIP/`).
-- **Themes**: 5 light + 5 dark color presets; **10 animated backgrounds** (+ none); persisted in `blip-config.json`; respects reduced-motion.
-- **Settings**: optional **local profile picture** (PNG/WebP/JPEG, capped size); peers and chat hub show it for your own BLIP ID; **Remove** restores the deterministic generated avatar.
-- **Windows tray**: **Show** / **Выход** context menu, branding tooltip, **Quit** runs full shutdown; **Close hides to tray** when enabled (default on Windows; setting in Settings).
+- **Auto-updates** from [GitHub Releases](https://github.com/krwg/BLIP/releases) via `electron-updater` (packaged Windows builds); background check after startup; **Updates** section with manual check, progress, and **Restart and install** when a build is downloaded.
+- **Settings layout**: section list on the **left** (like a second sidebar), **content on the right**; until a section is chosen, the right pane shows **Settings** and a short line to pick a section (Profile, Appearance, System & tray, Updates, About).
+- `electron-builder` **publish** config for `krwg/BLIP` (for CI/release uploads).
+- **Themes**, **animated backgrounds**, **local profile avatars**, and **Windows tray / close-to-tray** (already on `main`; summarized here for the 0.1.5 release line).
 
 ### Changed
 
-- README: Community section + Node **20+**, navigation link to Pages, Contribution doc includes Pages setup.
+- **Settings** reorganized into panels; appearance block no longer repeats the main “Look & background” heading inside the panel title.
+- **`get-app-metadata` IPC** now includes `isPackaged` for the renderer (updates UI, dev hint).
+- **`package.json`**: `author`, `repository`, version **0.1.5**.
 
 ## [0.1.4] — Obsidian
 

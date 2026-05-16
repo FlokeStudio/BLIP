@@ -731,7 +731,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-width: 520px;
+  max-width: min(100%, 920px);
+  width: 100%;
+  align-self: stretch;
 }
 
 .settings-view label {
@@ -819,6 +821,76 @@ body {
 .settings-tray-toggle-row input {
   width: auto;
   accent-color: var(--blip-accent);
+}
+
+.settings-shell {
+  display: flex;
+  flex-direction: row;
+  gap: 20px;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.settings-shell__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-shell__nav {
+  flex: 0 0 172px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.settings-nav-btn {
+  width: 100%;
+  text-align: left;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+.settings-nav-btn.selected {
+  border-color: var(--blip-accent);
+  color: var(--blip-accent);
+}
+
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-panel-title {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+  color: var(--blip-accent);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.settings-panel--empty .hint {
+  margin: 0;
+  max-width: 420px;
+  line-height: 1.5;
+}
+
+.settings-update-status {
+  margin: 0;
+  font-size: 12px;
+  color: var(--blip-text);
+  line-height: 1.4;
+}
+
+.settings-updates-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .section-subtitle {
