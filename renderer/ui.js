@@ -3110,7 +3110,16 @@ export function initUI(config, blipApi) {
   });
 
   window.addEventListener('blip-groups-changed', () => {
-    if (state.view === 'chat' && !state.activePeer && !state.activeGroup) renderView('chat');
+    if (state.view !== 'chat') return;
+    if (state.activeGroup && !getGroup(state.activeGroup)) {
+      closeGroupChatUi(state.activeGroup);
+    }
+    if (!state.activePeer && !state.activeGroup) {
+      renderView('chat');
+    } else if (state.activeGroup) {
+      const g = getGroup(state.activeGroup);
+      if (g) ensureGroupChatView(state.activeGroup)?.updateGroup?.(g);
+    }
   });
 
   window.addEventListener('blip-avatar-changed', () => {

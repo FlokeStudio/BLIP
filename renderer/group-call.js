@@ -1,17 +1,40 @@
-import { t } from './i18n.js';
-import { getGroup, saveGroup, amHost, isGroupMember, normalizeMemberIds } from './groups.js';
+import { t, applyI18n } from './i18n.js';
+import { getGroup, saveGroup, amHost, isGroupMember, normalizeMemberIds, groupDisplayName } from './groups.js';
 import { sounds } from './audio.js';
 import { showAppToast } from './toasts.js';
+import { createAvatarElement } from './avatar.js';
 
 const ICE = [];
 /** @type {Map<number, RTCPeerConnection>} */
 const peers = new Map();
 /** @type {Map<number, RTCIceCandidateInit[]>} */
 const pendingCandidates = new Map();
+/** @type {Map<number, HTMLAudioElement>} */
+const remoteAudios = new Map();
+
 let localStream = null;
 let activeGroupId = null;
-let panelEl = null;
 let apiRef = null;
+let configRef = null;
+let shell = null;
+let muted = false;
+let deafened = false;
+let callStart = null;
+let timerInterval = null;
+let pendingInvite = null;
+
+function peerNum(id) {
+  return Number(id);
+}
+
+function wireFrom(msg) {
+  return Number(msg.from);
+}
+
+function signalOrigin(msg) {
+  const o = msg.originFrom ?? msg.from;
+  return peerNum(o);
+}
 
 function normalizeSdp(sdp) {
   if (!sdp) return null;
@@ -20,44 +43,236 @@ function normalizeSdp(sdp) {
   return null;
 }
 
-function peerNum(id) {
-  return Number(id);
-}
-
 async function getMic() {
   return navigator.mediaDevices.getUserMedia({ audio: true, video: false });
 }
 
-function ensurePanel() {
-  if (panelEl?.isConnected) return panelEl;
-  panelEl = document.createElement('div');
-  panelEl.className = 'group-call-panel glass hidden';
-  panelEl.innerHTML = `
-    <div class="group-call-head">
-      <span class="group-call-title" data-i18n="group.call_active">${t('group.call_active')}</span>
-      <button type="button" class="btn btn-danger group-call-leave">${t('group.leave_call')}</button>
-    </div>
-    <div class="group-call-roster"></div>
-  `;
-  panelEl.querySelector('.group-call-leave')?.addEventListener('click', () => {
-    void leaveGroupCall();
-  });
-  document.body.appendChild(panelEl);
-  return panelEl;
+function formatDuration(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(m)}:${pad(s % 60)}`;
 }
 
-function refreshRoster(group) {
-  const roster = panelEl?.querySelector('.group-call-roster');
-  if (!roster || !group) return;
-  roster.innerHTML = '';
-  group.members.forEach((id) => {
-    const row = document.createElement('div');
-    row.className = 'group-call-peer';
-    const n = peerNum(id);
-    const connected = n === peerNum(apiRef?.config?.blipId) || peers.has(n);
-    row.textContent = `#${n}${connected ? ' · ON' : ''}`;
-    roster.appendChild(row);
+function createGroupCallShell(config) {
+  const overlay = document.createElement('div');
+  overlay.className = 'call-overlay hidden';
+
+  const inner = document.createElement('motion');
+  inner.className = 'call-inner glass';
+
+  const statusEl = document.createElement('div');
+  statusEl.className = 'call-status';
+  statusEl.dataset.i18n = 'group.call_active';
+  statusEl.textContent = t('group.call_active');
+
+  const titleEl = document.createElement('div');
+  titleEl.className = 'group-call-name';
+
+  const voiceWrap = document.createElement('div');
+  voiceWrap.className = 'call-voice-wrap';
+  const avatarGrid = document.createElement('div');
+  avatarGrid.className = 'group-call-avatar-grid';
+  const waveform = document.createElement('div');
+  waveform.className = 'call-waveform';
+  for (let i = 0; i < 8; i++) {
+    const bar = document.createElement('div');
+    bar.className = 'wave-bar';
+    waveform.appendChild(bar);
+  }
+  voiceWrap.appendChild(avatarGrid);
+  voiceWrap.appendChild(waveform);
+
+  const timerEl = document.createElement('div');
+  timerEl.className = 'call-timer';
+  timerEl.textContent = '00:00';
+
+  const controls = document.createElement('motion');
+  controls.className = 'call-controls';
+
+  const muteBtn = document.createElement('button');
+  muteBtn.type = 'button';
+  muteBtn.className = 'btn btn-accent';
+  muteBtn.dataset.i18n = 'call.mute';
+  muteBtn.textContent = t('call.mute');
+
+  const deafenBtn = document.createElement('button');
+  deafenBtn.type = 'button';
+  deafenBtn.className = 'btn btn-accent';
+  deafenBtn.dataset.i18n = 'call.deafen';
+  deafenBtn.textContent = t('call.deafen');
+
+  const acceptBtn = document.createElement('button');
+  acceptBtn.type = 'button';
+  acceptBtn.className = 'btn btn-accent hidden';
+  acceptBtn.dataset.i18n = 'call.accept';
+  acceptBtn.textContent = t('call.accept');
+
+  const rejectBtn = document.createElement('button');
+  rejectBtn.type = 'button';
+  rejectBtn.className = 'btn btn-danger hidden';
+  rejectBtn.dataset.i18n = 'call.reject';
+  rejectBtn.textContent = t('call.reject');
+
+  const endBtn = document.createElement('button');
+  endBtn.type = 'button';
+  endBtn.className = 'btn btn-danger';
+  endBtn.dataset.i18n = 'group.leave_call';
+  endBtn.textContent = t('group.leave_call');
+
+  controls.appendChild(muteBtn);
+  controls.appendChild(deafenBtn);
+  controls.appendChild(acceptBtn);
+  controls.appendChild(rejectBtn);
+  controls.appendChild(endBtn);
+
+  inner.appendChild(statusEl);
+  inner.appendChild(titleEl);
+  inner.appendChild(voiceWrap);
+  inner.appendChild(timerEl);
+  inner.appendChild(controls);
+  overlay.appendChild(inner);
+  document.body.appendChild(overlay);
+
+  function setStatus(key) {
+    statusEl.dataset.i18n = key;
+    statusEl.textContent = t(key);
+  }
+
+  function show() {
+    overlay.classList.remove('hidden');
+  }
+
+  function hide() {
+    overlay.classList.add('hidden');
+    acceptBtn.classList.add('hidden');
+    rejectBtn.classList.add('hidden');
+    endBtn.classList.remove('hidden');
+    muteBtn.classList.remove('hidden');
+    deafenBtn.classList.remove('hidden');
+  }
+
+  function showIncoming() {
+    show();
+    setStatus('group.call_incoming');
+    acceptBtn.classList.remove('hidden');
+    rejectBtn.classList.remove('hidden');
+    endBtn.classList.add('hidden');
+    muteBtn.classList.add('hidden');
+    deafenBtn.classList.add('hidden');
+  }
+
+  function showActive() {
+    show();
+    setStatus('group.call_active');
+    acceptBtn.classList.add('hidden');
+    rejectBtn.classList.add('hidden');
+    endBtn.classList.remove('hidden');
+    muteBtn.classList.remove('hidden');
+    deafenBtn.classList.remove('hidden');
+  }
+
+  function startTimer() {
+    callStart = Date.now();
+    clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      if (callStart) timerEl.textContent = formatDuration(Date.now() - callStart);
+    }, 500);
+  }
+
+  function stopTimer() {
+    clearInterval(timerInterval);
+    timerInterval = null;
+    callStart = null;
+    timerEl.textContent = '00:00';
+  }
+
+  function refreshAvatars(group) {
+    avatarGrid.innerHTML = '';
+    if (!group) return;
+    const myId = peerNum(config.blipId);
+    group.members.forEach((id) => {
+      const n = peerNum(id);
+      const cell = document.createElement('div');
+      cell.className = 'group-call-member';
+      const slot = document.createElement('div');
+      slot.className = 'call-avatar-slot group-call-avatar-slot';
+      slot.appendChild(createAvatarElement(n, 4, { selfBlipId: config.blipId }));
+      const label = document.createElement('span');
+      label.className = 'group-call-member-label';
+      const connected = n === myId || peers.has(n);
+      label.textContent = n === myId ? t('group.you') : `#${n}`;
+      if (connected) {
+        const dot = document.createElement('span');
+        dot.className = 'group-call-member-on';
+        dot.textContent = ' ON';
+        label.appendChild(dot);
+      }
+      cell.appendChild(slot);
+      cell.appendChild(label);
+      avatarGrid.appendChild(cell);
+    });
+  }
+
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    localStream?.getAudioTracks().forEach((tr) => {
+      tr.enabled = !muted;
+    });
+    muteBtn.classList.toggle('active', muted);
+    muteBtn.dataset.i18n = muted ? 'call.unmute' : 'call.mute';
+    muteBtn.textContent = t(muted ? 'call.unmute' : 'call.mute');
   });
+
+  deafenBtn.addEventListener('click', () => {
+    deafened = !deafened;
+    for (const audio of remoteAudios.values()) {
+      audio.muted = deafened;
+    }
+    deafenBtn.classList.toggle('active', deafened);
+    deafenBtn.dataset.i18n = deafened ? 'call.undeafen' : 'call.deafen';
+    deafenBtn.textContent = t(deafened ? 'call.undeafen' : 'call.deafen');
+  });
+
+  endBtn.addEventListener('click', () => {
+    void leaveGroupCall();
+  });
+
+  acceptBtn.addEventListener('click', () => {
+    if (pendingInvite) {
+      const { groupId, api } = pendingInvite;
+      pendingInvite = null;
+      void joinGroupCall(groupId, api, { skipInvite: true });
+    }
+  });
+
+  rejectBtn.addEventListener('click', () => {
+    pendingInvite = null;
+    hide();
+    stopTimer();
+  });
+
+  return {
+    overlay,
+    show,
+    hide,
+    showIncoming,
+    showActive,
+    setStatus,
+    setTitle: (text) => {
+      titleEl.textContent = text;
+    },
+    refreshAvatars,
+    startTimer,
+    stopTimer,
+    refreshI18n: () => applyI18n(overlay),
+  };
+}
+
+function ensureShell(config) {
+  if (!shell) shell = createGroupCallShell(config);
+  configRef = config;
+  return shell;
 }
 
 async function sendSignal(groupId, targetId, payload) {
@@ -74,14 +289,12 @@ async function sendSignal(groupId, targetId, payload) {
       groupId,
       host: hostId,
       target,
-      from: myId,
+      originFrom: myId,
       ...payload,
     });
-    if (res?.ok === false) {
-      console.warn('[group-call] signal send failed:', res.error);
-    }
+    if (res?.ok === false) console.warn('[group-call] signal:', res.error);
   } catch (err) {
-    console.warn('[group-call] signal send:', err?.message || err);
+    console.warn('[group-call] signal:', err?.message || err);
   }
 }
 
@@ -110,11 +323,17 @@ async function createPc(remoteId, groupId, initiator) {
   }
 
   pc.ontrack = (ev) => {
-    const audio = document.createElement('audio');
-    audio.autoplay = true;
+    let audio = remoteAudios.get(rid);
+    if (!audio) {
+      audio = document.createElement('audio');
+      audio.autoplay = true;
+      audio.dataset.peer = String(rid);
+      remoteAudios.set(rid, audio);
+      document.body.appendChild(audio);
+    }
     audio.srcObject = ev.streams[0] || new MediaStream([ev.track]);
-    audio.dataset.peer = String(rid);
-    panelEl?.appendChild(audio);
+    audio.muted = deafened;
+    shell?.refreshAvatars(getGroup(groupId));
   };
 
   pc.onicecandidate = (ev) => {
@@ -145,17 +364,26 @@ export function isInGroupCall() {
   return !!activeGroupId;
 }
 
-export async function joinGroupCall(groupId, api) {
-  if (activeGroupId === groupId) {
+export async function joinGroupCall(groupId, api, opts = {}) {
+  const config = api.config;
+  ensureShell(config);
+
+  if (activeGroupId === groupId && localStream) {
     apiRef = api;
-    refreshRoster(getGroup(groupId));
+    shell.showActive();
+    shell.refreshAvatars(getGroup(groupId));
     return;
   }
   if (activeGroupId) await leaveGroupCall();
+
   const group = getGroup(groupId);
   if (!group) return;
+
   apiRef = api;
+  configRef = config;
   activeGroupId = groupId;
+  pendingInvite = null;
+
   try {
     localStream = await getMic();
   } catch (err) {
@@ -166,13 +394,17 @@ export async function joinGroupCall(groupId, api) {
       durationMs: 5000,
     });
     activeGroupId = null;
+    shell.hide();
     return;
   }
-  ensurePanel();
-  panelEl.classList.remove('hidden');
-  refreshRoster(group);
 
-  const myId = peerNum(api.config.blipId);
+  shell.setTitle(groupDisplayName(group));
+  shell.showActive();
+  shell.startTimer();
+  shell.refreshAvatars(group);
+  sounds.outgoingCall();
+
+  const myId = peerNum(config.blipId);
   const hostId = peerNum(group.hostId);
 
   for (const m of group.members) {
@@ -181,23 +413,22 @@ export async function joinGroupCall(groupId, api) {
     if (shouldInitiate(myId, mid)) void createPc(mid, groupId, true);
   }
 
-  for (const m of group.members) {
-    const mid = peerNum(m);
-    if (mid === myId) continue;
-    try {
-      const res = await api.sendTcpMessage({
-        type: 'group-call-start',
-        to: mid,
-        groupId,
-        host: hostId,
-        from: myId,
-        members: group.members,
-      });
-      if (res?.ok === false) {
-        console.warn('[group-call] invite failed for', mid, res.error);
+  if (!opts.skipInvite) {
+    for (const m of group.members) {
+      const mid = peerNum(m);
+      if (mid === myId) continue;
+      try {
+        const res = await api.sendTcpMessage({
+          type: 'group-call-start',
+          to: mid,
+          groupId,
+          host: hostId,
+          members: group.members,
+        });
+        if (res?.ok === false) console.warn('[group-call] invite', mid, res.error);
+      } catch (err) {
+        console.warn('[group-call] invite', mid, err?.message || err);
       }
-    } catch (err) {
-      console.warn('[group-call] invite failed for', mid, err?.message || err);
     }
   }
 }
@@ -217,19 +448,25 @@ export async function leaveGroupCall() {
           to: mid,
           groupId: gid,
           host: group.hostId,
-          from: myId,
         });
       }
     }
   }
+
   for (const pc of peers.values()) pc.close();
   peers.clear();
   pendingCandidates.clear();
+  remoteAudios.forEach((a) => a.remove());
+  remoteAudios.clear();
   localStream?.getTracks().forEach((tr) => tr.stop());
   localStream = null;
   activeGroupId = null;
-  panelEl?.querySelectorAll('audio').forEach((a) => a.remove());
-  panelEl?.classList.add('hidden');
+  pendingInvite = null;
+  muted = false;
+  deafened = false;
+  shell?.stopTimer();
+  shell?.hide();
+  sounds.callEnd();
 }
 
 export async function handleGroupCallSignal(msg, api) {
@@ -237,14 +474,15 @@ export async function handleGroupCallSignal(msg, api) {
   const group = getGroup(groupId);
   if (!group) return;
   apiRef = api;
+  ensureShell(api.config);
 
   const target = peerNum(msg.target);
-  const from = peerNum(msg.from);
+  const origin = signalOrigin(msg);
   const myId = peerNum(api.config.blipId);
 
-  if (target !== myId && from !== myId) return;
+  if (target !== myId && origin !== myId) return;
 
-  const remoteId = from === myId ? target : from;
+  const remoteId = origin === myId ? target : origin;
   if (!isGroupMember(group, remoteId) || !isGroupMember(group, myId)) return;
 
   if (msg.signalKind === 'offer') {
@@ -261,8 +499,9 @@ export async function handleGroupCallSignal(msg, api) {
         });
         return;
       }
-      ensurePanel();
-      panelEl.classList.remove('hidden');
+      shell.setTitle(groupDisplayName(group));
+      shell.showActive();
+      shell.startTimer();
     }
     const pc = await createPc(remoteId, groupId, false);
     const offer = normalizeSdp(msg.sdp);
@@ -275,7 +514,7 @@ export async function handleGroupCallSignal(msg, api) {
       signalKind: 'answer',
       sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp },
     });
-    refreshRoster(group);
+    shell.refreshAvatars(group);
     for (const m of group.members) {
       const mid = peerNum(m);
       if (mid === myId || mid === remoteId) continue;
@@ -291,7 +530,7 @@ export async function handleGroupCallSignal(msg, api) {
       await pc.setRemoteDescription(answer);
       await flushCandidates(remoteId, pc);
     }
-    refreshRoster(group);
+    shell?.refreshAvatars(group);
     return;
   }
 
@@ -325,49 +564,54 @@ export async function handleGroupCallStart(msg, api) {
     saveGroup(group);
   }
   if (!group || !isGroupMember(group, api.config.blipId)) return;
-  if (activeGroupId === msg.groupId) {
-    refreshRoster(group);
+  if (activeGroupId === msg.groupId && localStream) {
+    shell?.refreshAvatars(group);
     return;
   }
-  showAppToastInvite(msg, api);
-}
 
-function showAppToastInvite(msg, api) {
+  ensureShell(api.config);
+  const starter = wireFrom(msg);
+  shell.setTitle(groupDisplayName(group));
+  shell.refreshAvatars(group);
+  pendingInvite = { groupId: msg.groupId, api };
+  shell.showIncoming();
   sounds.groupCallInvite();
+
   showAppToast({
     title: t('group.call_invite'),
-    body: t('group.call_invite_body').replace('{id}', String(msg.from)),
+    body: t('group.call_invite_body').replace('{id}', String(starter)),
     actions: [
       {
         label: t('group.join_call'),
         primary: true,
-        onClick: () => void joinGroupCall(msg.groupId, api),
+        onClick: () => void joinGroupCall(msg.groupId, api, { skipInvite: true }),
       },
     ],
-    durationMs: 12000,
+    durationMs: 15000,
   });
 }
 
 export async function handleGroupCallEnd(msg) {
   if (msg.groupId !== activeGroupId) return;
-  const remoteId = peerNum(msg.from);
+  const remoteId = wireFrom(msg);
   const pc = peers.get(remoteId);
   if (pc) {
     pc.close();
     peers.delete(remoteId);
   }
-  panelEl?.querySelector(`audio[data-peer="${remoteId}"]`)?.remove();
+  remoteAudios.get(remoteId)?.remove();
+  remoteAudios.delete(remoteId);
+  shell?.refreshAvatars(getGroup(msg.groupId));
 }
 
-/** Host relays WebRTC signals between members. */
 export async function relayGroupCallSignal(msg, api) {
   const myId = peerNum(api.config.blipId);
   const group = getGroup(msg.groupId);
   if (!group || !amHost(group, myId)) return;
   const target = peerNum(msg.target);
-  const from = peerNum(msg.from);
+  const origin = signalOrigin(msg);
   if (!target || target === myId) return;
-  if (!isGroupMember(group, target) || !isGroupMember(group, from)) return;
+  if (!isGroupMember(group, target) || !isGroupMember(group, origin)) return;
   try {
     await api.sendTcpMessage({
       type: 'group-call-signal',
@@ -375,7 +619,7 @@ export async function relayGroupCallSignal(msg, api) {
       groupId: msg.groupId,
       host: group.hostId,
       target,
-      from,
+      originFrom: origin,
       signalKind: msg.signalKind,
       sdp: msg.sdp,
       candidate: msg.candidate,

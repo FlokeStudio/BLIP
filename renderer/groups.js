@@ -129,6 +129,10 @@ export function addGroupMessage(groupId, msg) {
   if (!g) return false;
   if (!g.messages) g.messages = [];
   if (msg.id && g.messages.some((m) => m.id === msg.id)) return false;
+  const fp = `${Number(msg.from)}:${msg.timestamp}:${(msg.text || '').slice(0, 80)}`;
+  if (g.messages.some((m) => `${Number(m.from)}:${m.timestamp}:${(m.text || '').slice(0, 80)}` === fp)) {
+    return false;
+  }
   g.messages.push(msg);
   if (g.messages.length > 500) g.messages = g.messages.slice(-500);
   g.updatedAt = Date.now();

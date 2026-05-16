@@ -15,6 +15,7 @@ import {
 import { showAppToast } from './toasts.js';
 import { sounds } from './audio.js';
 import { openConfirmDialog } from './confirm-dialog.js';
+import { createMessageId } from './message-id.js';
 import {
   joinGroupCall,
   leaveGroupCall,
@@ -32,6 +33,17 @@ function onlineMemberIds(statePeers) {
       .map((p) => Number(p.blipId))
       .filter(Number.isFinite)
   );
+}
+
+function wireFrom(msg) {
+  return Number(msg.from);
+}
+
+/** Original author (TCP `from` is always the socket peer after Handshake). */
+function messageAuthor(msg) {
+  const a = msg.author ?? msg.originFrom;
+  if (a != null && Number.isFinite(Number(a))) return Number(a);
+  return wireFrom(msg);
 }
 
 async function safeSendTcp(api, payload) {
@@ -52,6 +64,8 @@ function deliverGroupMessage(groupId, incoming, ctx, { bumpUnread = false } = {}
   const myId = Number(ctx.config.blipId);
   const group = getGroup(groupId);
   if (!group || !isGroupMember(group, myId)) return false;
+
+  if (!incoming.id) incoming.id = createMessageId();
 
   const outgoing = Number(incoming.from) === myId;
   const stored = addGroupMessage(groupId, { ...incoming, outgoing });
@@ -83,7 +97,6 @@ export async function leaveGroup(api, config, groupId, statePeers) {
       to: m,
       groupId,
       host: group.hostId,
-      from: myId,
     });
   }
 
@@ -122,7 +135,6 @@ export async function dissolveGroup(api, config, groupId) {
       to: m,
       groupId,
       host: myId,
-      from: myId,
     });
   }
   deleteGroup(groupId);
@@ -193,6 +205,7 @@ export async function sendGroupChatMessage(api, config, groupId, msg) {
   if (!group) return { ok: false };
   const hostId = Number(group.hostId);
   const myId = Number(config.blipId);
+  const author = myId;
 
   if (amHost(group, myId)) {
     for (const m of group.members) {
@@ -202,7 +215,7 @@ export async function sendGroupChatMessage(api, config, groupId, msg) {
         to: m,
         groupId,
         host: hostId,
-        from: myId,
+        author,
         text: msg.text,
         id: msg.id,
         timestamp: msg.timestamp,
@@ -217,7 +230,7 @@ export async function sendGroupChatMessage(api, config, groupId, msg) {
     to: hostId,
     groupId,
     host: hostId,
-    from: myId,
+    author,
     text: msg.text,
     id: msg.id,
     timestamp: msg.timestamp,
@@ -229,6 +242,7 @@ export async function handleGroupTcpMessage(msg, ctx) {
   const { api, config, getGroupChatView, bumpGroupUnread } = ctx;
   const myId = Number(config.blipId);
   const type = msg.type;
+  const tcpPeer = wireFrom(msg);
 
   if (type === 'group-invite') {
     if (!config.doNotDisturb) sounds.groupInvite();
@@ -254,7 +268,6 @@ export async function handleGroupTcpMessage(msg, ctx) {
         groupId: msg.groupId,
         host: msg.host,
         accept: true,
-        from: myId,
       });
       showAppToast({ title: t('group.joined'), body: group.name, durationMs: 4000 });
     } else {
@@ -264,14 +277,12 @@ export async function handleGroupTcpMessage(msg, ctx) {
         groupId: msg.groupId,
         host: msg.host,
         accept: false,
-        from: myId,
       });
     }
     return true;
   }
 
   if (type === 'group-invite-ack') {
-    if (!msg.accept) return true;
     return true;
   }
 
@@ -289,25 +300,32 @@ export async function handleGroupTcpMessage(msg, ctx) {
     const group = getGroup(msg.groupId);
     if (!group || !isGroupMember(group, myId)) return true;
 
+    const hostId = Number(group.hostId);
+    const author = messageAuthor(msg);
     const incoming = {
       id: msg.id,
-      from: Number(msg.from),
+      from: author,
       text: msg.text,
       timestamp: msg.timestamp || Date.now(),
       attachment: msg.attachment,
     };
 
     if (amHost(group, myId)) {
-      if (Number(msg.from) === myId) return true;
+      // Host accepts only direct uploads from members (TCP peer = author).
+      if (msg.relayed) return true;
+      if (tcpPeer !== author || !isGroupMember(group, author)) return true;
+      if (author === myId) return true;
+
       deliverGroupMessage(msg.groupId, incoming, ctx);
       for (const m of group.members) {
-        if (Number(m) === myId || Number(m) === Number(msg.from)) continue;
+        if (Number(m) === myId || Number(m) === author) continue;
         await safeSendTcp(api, {
           type: 'group-msg',
           to: m,
           groupId: msg.groupId,
-          host: group.hostId,
-          from: msg.from,
+          host: hostId,
+          author,
+          relayed: true,
           text: msg.text,
           id: msg.id,
           timestamp: msg.timestamp,
@@ -315,6 +333,8 @@ export async function handleGroupTcpMessage(msg, ctx) {
         });
       }
     } else {
+      // Members only trust relayed traffic from the designated host.
+      if (tcpPeer !== hostId) return true;
       deliverGroupMessage(msg.groupId, incoming, ctx, { bumpUnread: true });
     }
     return true;
@@ -323,7 +343,7 @@ export async function handleGroupTcpMessage(msg, ctx) {
   if (type === 'group-leave') {
     const group = getGroup(msg.groupId);
     if (!group) return true;
-    const leaverId = Number(msg.from);
+    const leaverId = tcpPeer;
     if (!isGroupMember(group, leaverId)) return true;
     const wasHost = Number(group.hostId) === leaverId;
     removeMemberFromGroup(msg.groupId, leaverId);

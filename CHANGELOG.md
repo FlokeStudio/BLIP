@@ -9,6 +9,18 @@ Release **version numbers** track [`app-metadata.json`](app-metadata.json) (sync
 
 ## [Unreleased]
 
+## [0.5.2] — Handshake
+
+### Fixed
+
+- **Group mesh protocol (Handshake)** — TCP `from` is always the socket peer; group chat now uses `author` for the real sender and `relayed` to stop double-relay duplicates. Members only accept `group-msg` from the designated host.
+- **Group WebRTC** — `originFrom` on `group-call-signal` so host relay no longer breaks offers/answers after 0.5.0 Handshake.
+- **Leave / delete group** — UI refreshes on `blip-groups-changed` even when a group chat was open; TCP notify no longer sends redundant `from` in payload (main sets it).
+
+### Changed
+
+- **Group call UI** — full-screen `call-overlay` (same shell as 1:1 voice): avatars, waveform, mute/deafen, timer, accept/reject on incoming.
+
 ## [0.5.1] — Group fixes
 
 ### Fixed

@@ -1,6 +1,6 @@
 {
   "name": "blip",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "P2P messenger for local networks — no cloud, no servers",
   "author": "krwg",
   "repository": {
