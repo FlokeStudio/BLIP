@@ -323,28 +323,43 @@ select.blip-select:focus {
 
 .id-grid {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 5px;
+  grid-template-columns: repeat(8, minmax(52px, 1fr));
+  gap: 6px;
   width: 100%;
-  max-width: 448px;
+  max-width: 496px;
   margin-bottom: 16px;
 }
 
 .id-cell {
   position: relative;
   aspect-ratio: 1;
-  min-height: 44px;
+  min-height: 48px;
+  min-width: 0;
   border: 2px solid rgba(0, 255, 200, 0.35);
   background: #141414;
   color: var(--blip-text);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1;
   cursor: pointer;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: visible;
+}
+
+.id-cell-num {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+  font-size: inherit;
+  line-height: 1;
+}
+
+.id-cell.id-cell--2digit .id-cell-num {
+  font-size: 11px;
+  letter-spacing: -0.02em;
 }
 
 .id-cell:hover:not(:disabled) {
@@ -426,12 +441,14 @@ select.blip-select:focus {
 }
 
 .dial-input {
-  font-size: 40px;
+  font-size: 36px;
   text-align: center;
   width: 100%;
-  max-width: 140px;
-  letter-spacing: 4px;
-  padding: 12px 16px;
+  min-width: 200px;
+  max-width: 240px;
+  letter-spacing: 0.12em;
+  padding: 12px 20px;
+  box-sizing: border-box;
 }
 
 .dial-actions {

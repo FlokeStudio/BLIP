@@ -25,9 +25,14 @@ export function createIdGrid({ occupiedIds = [], selectedId = null, onSelect }) 
     const cell = document.createElement('button');
     cell.type = 'button';
     cell.className = 'id-cell';
-    cell.textContent = String(n);
+    if (n >= 10) cell.classList.add('id-cell--2digit');
     cell.dataset.id = String(n);
     cell.setAttribute('aria-label', String(n));
+
+    const num = document.createElement('span');
+    num.className = 'id-cell-num';
+    num.textContent = String(n);
+    cell.appendChild(num);
 
     if (occupied.has(n) && n !== selectedId) {
       cell.classList.add('occupied');

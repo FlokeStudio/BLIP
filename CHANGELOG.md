@@ -19,7 +19,8 @@ Release **version numbers** track [`app-metadata.json`](app-metadata.json) (sync
 ### Fixed
 
 - **Screen share** — broken `getDisplayMedia` handler (`useSystemPicker` + empty callback); capture uses a pre-selected source again.
-- **ID grid** — slightly larger cells so single-digit IDs (e.g. **4**) fit cleanly.
+- **Dial input** — wider field so placeholder and values **1–64** / **64** are not clipped.
+- **ID grid** — larger cells and two-digit styling so **10–64** fit cleanly.
 
 ## [0.4.0] — Mesh
 
