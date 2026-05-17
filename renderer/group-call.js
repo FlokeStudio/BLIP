@@ -16,7 +16,20 @@ import {
   applyScreenTrackConstraints,
   tuneVideoSender,
   trackLooksLikeScreen,
+  applyCallFullscreenLayout,
 } from './call-media.js';
+import {
+  getOngoingGroupCall,
+  applyVoiceRoster,
+  addVoiceParticipant,
+  removeVoiceParticipant,
+  voiceParticipants,
+  applyGroupCallStateFromTcp,
+  noteGroupCallStarted,
+  clearGroupCallRoster,
+} from './group-call-roster.js';
+
+export { getOngoingGroupCall };
 
 const ICE = [];
 /** @type {Map<number, RTCPeerConnection>} */
@@ -27,13 +40,9 @@ const pendingCandidates = new Map();
 const remoteAudios = new Map();
 /** @type {Map<number, HTMLVideoElement>} */
 const remoteVideos = new Map();
-/** @type {Map<string, Set<number>>} */
-const voiceByGroup = new Map();
 /** @type {Map<number, { msg: object, groupId: string }>} */
 const pendingOffers = new Map();
 
-/** @type {Map<string, { active: boolean, participants: Set<number> }>} */
-const ongoingByGroup = new Map();
 const dismissedRing = new Set();
 
 let localStream = null;
@@ -45,6 +54,11 @@ let configRef = null;
 let shell = null;
 let muted = false;
 let deafened = false;
+/** @type {Map<number, { muted: boolean, deafened: boolean, screenSharing: boolean }>} */
+const peerMediaState = new Map();
+let groupFsOverlay = null;
+let groupFsWrap = null;
+let groupFsVideo = null;
 let callStart = null;
 let timerInterval = null;
 let heartbeatTimer = null;
@@ -89,75 +103,39 @@ function formatDuration(ms) {
   return `${pad(m)}:${pad(s % 60)}`;
 }
 
-function dispatchCallState(groupId) {
-  const snap = getOngoingGroupCall(groupId);
-  window.dispatchEvent(
-    new CustomEvent('blip-group-call-state', {
-      detail: { groupId, ...snap },
-    })
-  );
-}
-
-export function getOngoingGroupCall(groupId) {
-  const o = ongoingByGroup.get(groupId);
-  if (!o?.active) return { active: false, participants: [], count: 0 };
-  const participants = [...o.participants].sort((a, b) => a - b);
-  return { active: true, participants, count: participants.length };
-}
-
-function setOngoing(groupId, participantIds, active) {
-  if (!active || !participantIds?.length) {
-    ongoingByGroup.delete(groupId);
-  } else {
-    ongoingByGroup.set(groupId, {
-      active: true,
-      participants: new Set(participantIds.map(peerNum).filter(Number.isFinite)),
-    });
-  }
-  dispatchCallState(groupId);
-}
-
-function applyVoiceRoster(groupId, participantIds, active) {
-  if (!active || !participantIds?.length) {
-    voiceByGroup.delete(groupId);
-    setOngoing(groupId, [], false);
-    return;
-  }
-  const set = new Set(participantIds.map(peerNum).filter(Number.isFinite));
-  voiceByGroup.set(groupId, set);
-  setOngoing(groupId, [...set], true);
-}
-
-function addVoiceParticipant(groupId, id) {
-  const n = peerNum(id);
-  if (!Number.isFinite(n)) return;
-  let set = voiceByGroup.get(groupId);
-  if (!set) {
-    set = new Set();
-    voiceByGroup.set(groupId, set);
-  }
-  set.add(n);
-  setOngoing(groupId, [...set], true);
-}
-
-function removeVoiceParticipant(groupId, id) {
-  const s = voiceByGroup.get(groupId);
-  if (!s) return [];
-  s.delete(peerNum(id));
-  const list = [...s];
-  if (list.length === 0) voiceByGroup.delete(groupId);
-  setOngoing(groupId, list, list.length > 0);
-  return list;
-}
-
-function voiceParticipants(groupId) {
-  return [...(voiceByGroup.get(groupId) || [])];
+function reportActiveToMain() {
+  window.blip?.reportGroupCallActive?.({
+    active: !!activeGroupId && !!localStream,
+    groupId: activeGroupId,
+  });
 }
 
 function dismissIncomingUi(groupId) {
   sounds.stopOutgoingRing();
   if (pendingInvite?.groupId === groupId) pendingInvite = null;
   if (activeGroupId === groupId && localStream) shell?.showActive();
+}
+
+function myMediaState() {
+  return { muted, deafened, screenSharing: sharingScreen };
+}
+
+function getParticipantMediaState(peerId) {
+  const n = peerNum(peerId);
+  const myId = peerNum(configRef?.blipId);
+  if (n === myId) return myMediaState();
+  return (
+    peerMediaState.get(n) || { muted: false, deafened: false, screenSharing: false }
+  );
+}
+
+function buildStatesPayload(participants, myId) {
+  const states = {};
+  for (const pid of participants) {
+    states[String(pid)] = getParticipantMediaState(pid);
+  }
+  if (Number.isFinite(myId)) states[String(myId)] = myMediaState();
+  return states;
 }
 
 async function broadcastCallState(groupId, { end = false } = {}) {
@@ -167,10 +145,13 @@ async function broadcastCallState(groupId, { end = false } = {}) {
   let participants = [];
   if (end) {
     applyVoiceRoster(groupId, [], false);
+    peerMediaState.clear();
   } else {
     if (localStream && Number.isFinite(myId)) addVoiceParticipant(groupId, myId);
     participants = voiceParticipants(groupId);
   }
+
+  const states = end ? {} : buildStatesPayload(participants, myId);
 
   for (const m of group.members) {
     const mid = peerNum(m);
@@ -184,11 +165,66 @@ async function broadcastCallState(groupId, { end = false } = {}) {
         members: group.members,
         active: !end,
         participants,
+        states,
       });
     } catch (err) {
       console.warn('[group-call] state:', err?.message || err);
     }
   }
+}
+
+function ensureGroupFsOverlay(config) {
+  if (groupFsOverlay?.isConnected) return;
+  groupFsOverlay = document.createElement('div');
+  groupFsOverlay.className = 'group-call-fs-overlay hidden';
+  groupFsWrap = document.createElement('div');
+  groupFsWrap.className = 'group-call-fs-wrap call-video-wrap--fs-sized';
+  groupFsVideo = document.createElement('video');
+  groupFsVideo.className = 'group-call-fs-video call-video--stage';
+  groupFsVideo.autoplay = true;
+  groupFsVideo.playsInline = true;
+  groupFsVideo.muted = true;
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'btn btn-accent group-call-fs-close';
+  closeBtn.dataset.i18n = 'call.exit_fullscreen';
+  closeBtn.textContent = t('call.exit_fullscreen');
+  closeBtn.addEventListener('click', () => closeGroupVideoFs(config));
+  groupFsWrap.appendChild(groupFsVideo);
+  groupFsOverlay.appendChild(groupFsWrap);
+  groupFsOverlay.appendChild(closeBtn);
+  groupFsOverlay.addEventListener('click', (e) => {
+    if (e.target === groupFsOverlay) closeGroupVideoFs(config);
+  });
+  document.body.appendChild(groupFsOverlay);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && groupFsOverlay && !groupFsOverlay.classList.contains('hidden')) {
+      closeGroupVideoFs(config);
+    }
+  });
+}
+
+function closeGroupVideoFs(config) {
+  if (!groupFsOverlay) return;
+  groupFsOverlay.classList.add('hidden');
+  applyCallFullscreenLayout(groupFsWrap, null, config, false);
+  if (groupFsVideo) groupFsVideo.srcObject = null;
+}
+
+function openGroupVideoFs(peerId, config) {
+  const n = peerNum(peerId);
+  const myId = peerNum(config.blipId);
+  let stream = null;
+  if (n === myId && sharingScreen && screenStream) {
+    stream = screenStream;
+  } else {
+    stream = remoteVideos.get(n)?.srcObject || null;
+  }
+  if (!stream) return;
+  ensureGroupFsOverlay(config);
+  groupFsVideo.srcObject = stream;
+  applyCallFullscreenLayout(groupFsWrap, groupFsVideo, config, true);
+  groupFsOverlay.classList.remove('hidden');
 }
 
 function startHeartbeat(groupId) {
@@ -301,7 +337,8 @@ function createGroupCallShell(config) {
   inner.appendChild(timerEl);
   inner.appendChild(controls);
   overlay.appendChild(inner);
-  document.body.appendChild(overlay);
+  const mount = document.getElementById('group-call-root') || document.body;
+  mount.appendChild(overlay);
 
   function setStatus(key) {
     statusEl.dataset.i18n = key;
@@ -344,6 +381,7 @@ function createGroupCallShell(config) {
     endBtn.classList.remove('hidden');
     muteBtn.classList.remove('hidden');
     deafenBtn.classList.remove('hidden');
+    setShareButton(false);
     shareBtn.classList.remove('hidden');
   }
 
@@ -386,6 +424,15 @@ function createGroupCallShell(config) {
 
       const slot = document.createElement('div');
       slot.className = 'call-avatar-slot group-call-avatar-slot';
+      if (n === myId && sharingScreen && screenStream) {
+        const v = document.createElement('video');
+        v.className = 'group-call-remote-video';
+        v.autoplay = true;
+        v.playsInline = true;
+        v.muted = true;
+        v.srcObject = screenStream;
+        slot.appendChild(v);
+      } else {
       const remoteVid = remoteVideos.get(n);
       if (remoteVid?.srcObject) {
         const v = document.createElement('video');
@@ -398,6 +445,7 @@ function createGroupCallShell(config) {
       } else {
         slot.appendChild(createAvatarElement(n, 4, { selfBlipId: config.blipId }));
       }
+      }
       tile.appendChild(slot);
 
       if (connected) {
@@ -406,13 +454,44 @@ function createGroupCallShell(config) {
         tile.appendChild(ring);
       }
 
+      const media = getParticipantMediaState(n);
+      const badges = document.createElement('div');
+      badges.className = 'group-call-tile-badges';
+      if (media.muted) {
+        const micBadge = document.createElement('span');
+        micBadge.className = 'call-peer-badge call-peer-badge--mic';
+        micBadge.dataset.i18n = 'call.remote_muted';
+        micBadge.textContent = t('call.remote_muted');
+        badges.appendChild(micBadge);
+      }
+      if (media.deafened) {
+        const deafBadge = document.createElement('span');
+        deafBadge.className = 'call-peer-badge call-peer-badge--deaf';
+        deafBadge.dataset.i18n = 'call.remote_deaf';
+        deafBadge.textContent = t('call.remote_deaf');
+        badges.appendChild(deafBadge);
+      }
+      if (badges.childElementCount) tile.appendChild(badges);
+
+      const videoStream =
+        n === myId && sharingScreen && screenStream
+          ? screenStream
+          : remoteVideos.get(n)?.srcObject || null;
+      const vTrack = videoStream?.getVideoTracks?.()?.[0];
+      const isScreen = media.screenSharing || (vTrack && trackLooksLikeScreen(vTrack));
+      if (videoStream && inCall && isScreen) {
+        tile.classList.add('group-call-tile--expandable');
+        tile.title = t('call.fullscreen');
+        tile.addEventListener('click', () => openGroupVideoFs(n, config));
+      }
+
       const label = document.createElement('span');
       label.className = 'group-call-member-label';
       label.textContent = n === myId ? t('group.you') : `#${n}`;
       if (inCall) {
         const live = document.createElement('span');
         live.className = 'group-call-member-live';
-        live.textContent = connected ? ' · LINK' : ' · VOICE';
+        live.textContent = connected ? t('group.call_linked') : t('group.call_voice');
         label.appendChild(live);
       }
 
@@ -430,6 +509,10 @@ function createGroupCallShell(config) {
     muteBtn.classList.toggle('active', muted);
     muteBtn.dataset.i18n = muted ? 'call.unmute' : 'call.mute';
     muteBtn.textContent = t(muted ? 'call.unmute' : 'call.mute');
+    if (activeGroupId) {
+      void broadcastCallState(activeGroupId);
+      shell?.refreshAvatars(getGroup(activeGroupId));
+    }
   });
 
   deafenBtn.addEventListener('click', () => {
@@ -438,6 +521,10 @@ function createGroupCallShell(config) {
     deafenBtn.classList.toggle('active', deafened);
     deafenBtn.dataset.i18n = deafened ? 'call.undeafen' : 'call.deafen';
     deafenBtn.textContent = t(deafened ? 'call.undeafen' : 'call.deafen');
+    if (activeGroupId) {
+      void broadcastCallState(activeGroupId);
+      shell?.refreshAvatars(getGroup(activeGroupId));
+    }
   });
 
   shareBtn.addEventListener('click', () => {
@@ -518,7 +605,7 @@ async function applyVideoToPeer(rid, groupId, track, screenShare) {
   const sender = getVideoSender(pc);
   if (sender) {
     await sender.replaceTrack(track);
-    if (track) await tuneVideoSender(sender, { screenShare });
+    if (track) await tuneVideoSender(sender, { screenShare, config: configRef });
     return;
   }
   if (!track) return;
@@ -544,7 +631,11 @@ async function stopGroupScreenShare(syncShareBtn) {
   screenStream = null;
   sharingScreen = false;
   syncShareBtn?.(false);
-  if (activeGroupId) await applyVideoToAllPeers(activeGroupId, null, false);
+  if (activeGroupId) {
+    await applyVideoToAllPeers(activeGroupId, null, false);
+    void broadcastCallState(activeGroupId);
+    shell?.refreshAvatars(getGroup(activeGroupId));
+  }
 }
 
 async function toggleGroupScreenShare(syncShareBtn) {
@@ -556,10 +647,10 @@ async function toggleGroupScreenShare(syncShareBtn) {
   try {
     const sourceId = await openScreenPickerDialog();
     if (!sourceId) return;
-    const stream = await captureDisplayStream(sourceId);
+    const stream = await captureDisplayStream(sourceId, configRef);
     const screenTrack = stream.getVideoTracks()[0];
     if (!screenTrack) throw new Error('No screen track');
-    await applyScreenTrackConstraints(screenTrack);
+    await applyScreenTrackConstraints(screenTrack, configRef);
     screenStream = stream;
     sharingScreen = true;
     syncShareBtn?.(true);
@@ -568,6 +659,7 @@ async function toggleGroupScreenShare(syncShareBtn) {
       void stopGroupScreenShare(syncShareBtn);
     };
     shell?.refreshAvatars(getGroup(activeGroupId));
+    void broadcastCallState(activeGroupId);
   } catch (err) {
     console.error('[group-call] screen share:', err);
     showAppToast({
@@ -701,6 +793,7 @@ export async function joinGroupCall(groupId, api, opts = {}) {
   apiRef = api;
   configRef = config;
   activeGroupId = groupId;
+  reportActiveToMain();
   pendingInvite = null;
   dismissedRing.delete(groupId);
 
@@ -822,13 +915,25 @@ export async function leaveGroupCall() {
   sharingScreen = false;
   screenStream = null;
   activeGroupId = null;
+  reportActiveToMain();
   pendingInvite = null;
   muted = false;
   deafened = false;
+  peerMediaState.clear();
+  closeGroupVideoFs(configRef);
   shell?.stopTimer();
   shell?.hide();
   if (hadStream) sounds.callEnd();
+  window.blip?.closeGroupCallWindow?.();
   }
+}
+
+/** Boot group-call BrowserWindow (group-call-window.html). */
+export function initGroupCallWindow(api) {
+  apiRef = api;
+  const config = callConfig(api);
+  ensureShell(config);
+  applyI18n(document);
 }
 
 export async function handleGroupCallSignal(msg, api) {
@@ -912,8 +1017,7 @@ export async function handleGroupCallState(msg, api) {
   const participants = (msg.participants || []).map(peerNum).filter(Number.isFinite);
 
   if (!msg.active) {
-    voiceByGroup.delete(msg.groupId);
-    setOngoing(msg.groupId, [], false);
+    applyGroupCallStateFromTcp(msg);
     if (activeGroupId === msg.groupId && !localStream) {
       shell?.hide();
       pendingInvite = null;
@@ -921,7 +1025,19 @@ export async function handleGroupCallState(msg, api) {
     return;
   }
 
-  applyVoiceRoster(msg.groupId, participants, true);
+  applyGroupCallStateFromTcp(msg);
+
+  if (msg.states && typeof msg.states === 'object') {
+    for (const [id, st] of Object.entries(msg.states)) {
+      const n = peerNum(id);
+      if (!Number.isFinite(n)) continue;
+      peerMediaState.set(n, {
+        muted: !!st.muted,
+        deafened: !!st.deafened,
+        screenSharing: !!st.screenSharing,
+      });
+    }
+  }
 
   if (activeGroupId === msg.groupId && localStream) {
     await meshNewParticipants(msg.groupId, participants);
@@ -929,6 +1045,9 @@ export async function handleGroupCallState(msg, api) {
     return;
   }
 
+  if (shell && getGroup(msg.groupId)) {
+    shell.refreshAvatars(getGroup(msg.groupId));
+  }
 }
 
 export async function handleGroupCallStart(msg, api) {
@@ -936,9 +1055,7 @@ export async function handleGroupCallStart(msg, api) {
   const myId = myBlipId(api);
   if (!group || !isGroupMember(group, myId) || isInviteDeclined(msg.groupId)) return;
 
-  const starter = wireFrom(msg);
-  const prev = getOngoingGroupCall(msg.groupId).participants;
-  applyVoiceRoster(msg.groupId, [...new Set([...prev, starter])], true);
+  noteGroupCallStarted(msg.groupId, wireFrom(msg));
 
   if (activeGroupId === msg.groupId && localStream) {
     dismissIncomingUi(msg.groupId);
@@ -960,8 +1077,7 @@ export async function handleGroupCallEnd(msg) {
   const groupId = msg.groupId;
 
   if (msg.active === false) {
-    voiceByGroup.delete(groupId);
-    setOngoing(groupId, [], false);
+    clearGroupCallRoster(groupId);
     if (activeGroupId === groupId && !localStream) {
       shell?.hide();
       pendingInvite = null;

@@ -266,14 +266,20 @@ body {
 select.blip-select {
   width: 100%;
   max-width: 100%;
-  padding: 10px 12px;
+  padding: 10px 36px 10px 12px;
   border: 2px solid var(--blip-accent);
-  background: var(--blip-input-bg);
+  background-color: var(--blip-input-bg);
   color: var(--blip-text);
-  font-family: inherit;
-  font-size: 14px;
+  font-family: var(--blip-font, 'Minecraft', monospace);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
   outline: none;
   cursor: pointer;
+  border-radius: 0;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.65);
+  image-rendering: pixelated;
   appearance: none;
   background-image: linear-gradient(45deg, transparent 50%, var(--blip-accent) 50%),
     linear-gradient(135deg, var(--blip-accent) 50%, transparent 50%);
@@ -724,7 +730,48 @@ select.blip-select:focus {
 
 .emoji-picker {
   padding: 8px;
-  max-width: 280px;
+  width: min(320px, calc(100vw - 24px));
+  max-height: min(360px, 50vh);
+  display: flex;
+  flex-direction: column;
+  font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;
+}
+
+.emoji-picker-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--blip-muted);
+}
+
+.emoji-picker-tab {
+  width: 32px;
+  height: 28px;
+  border: 2px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.emoji-picker-tab.selected,
+.emoji-picker-tab:hover {
+  border-color: var(--blip-accent);
+  background: rgba(0, 255, 200, 0.1);
+}
+
+.emoji-picker-body {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.emoji-picker-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
 }
 
 .emoji-picker-row {
@@ -736,8 +783,10 @@ select.blip-select:focus {
 .emoji-picker-btn {
   border: none;
   background: transparent;
-  font-size: 1.1rem;
-  padding: 4px;
+  font-size: 1.25rem;
+  width: 30px;
+  height: 30px;
+  padding: 2px;
   cursor: pointer;
   line-height: 1;
 }
@@ -962,6 +1011,69 @@ select.blip-select:focus {
   height: 100%;
   object-fit: cover;
   border-radius: inherit;
+}
+
+.group-call-tile {
+  position: relative;
+}
+
+.group-call-tile-badges {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  right: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.group-call-tile-badges .call-peer-badge {
+  font-size: 8px;
+  padding: 2px 4px;
+}
+
+.group-call-tile--expandable {
+  cursor: pointer;
+}
+
+.group-call-tile--expandable:hover {
+  outline: 2px solid var(--blip-accent);
+}
+
+.group-call-fs-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100001;
+  background: rgba(0, 0, 0, 0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.group-call-fs-overlay.hidden {
+  display: none;
+}
+
+.group-call-fs-wrap {
+  width: 100%;
+  height: 100%;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+.group-call-fs-video {
+  background: #000;
+}
+
+.group-call-fs-close {
+  margin-bottom: 16px;
 }
 
 .group-call-avatar-slot {
@@ -1533,6 +1645,20 @@ select.blip-select:focus {
   background: #000;
 }
 
+.call-video-wrap--fs-sized {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+.call-video-wrap--fs-sized .call-video--stage {
+  width: var(--call-fs-w, 100%) !important;
+  height: var(--call-fs-h, auto) !important;
+  max-width: min(var(--call-fs-w, 100vw), 100vw) !important;
+  max-height: min(var(--call-fs-h, 100vh), 100vh) !important;
+  object-fit: contain;
+}
+
 .call-overlay--theater-fs {
   z-index: 99999;
 }
@@ -1853,6 +1979,30 @@ select.blip-select:focus {
   border-radius: 8px;
 }
 
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-field-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--blip-accent);
+  font-family: var(--blip-font, 'Minecraft', monospace);
+}
+
+.settings-dropdown {
+  width: 100%;
+  max-width: 400px;
+}
+
+.settings-panel .blip-select:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.65);
+}
+
 .settings-nav-btn {
   width: 100%;
   text-align: left;
@@ -2037,6 +2187,114 @@ select.blip-select:focus {
 
 .chat-file-dl {
   margin-left: auto;
+}
+
+.chat-file-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  width: 100%;
+  max-width: 220px;
+}
+
+.chat-file-progress-track {
+  height: 8px;
+  border: 2px solid var(--blip-accent);
+  background: rgba(0, 0, 0, 0.45);
+  image-rendering: pixelated;
+}
+
+.chat-file-progress-fill {
+  height: 100%;
+  background: var(--blip-accent);
+  box-shadow: 0 0 8px rgba(0, 255, 200, 0.45);
+  transition: width 0.15s steps(8);
+  animation: transfer-pulse 1s ease-in-out infinite;
+}
+
+@keyframes transfer-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.72;
+  }
+}
+
+.transfer-hub {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 9000;
+  width: min(320px, calc(100vw - 32px));
+  padding: 12px;
+  border: 2px solid var(--blip-accent);
+  border-radius: 6px;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.65);
+}
+
+.transfer-hub.hidden {
+  display: none;
+}
+
+.transfer-hub-head {
+  margin-bottom: 8px;
+}
+
+.transfer-hub-title {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--blip-accent);
+}
+
+.transfer-hub-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.transfer-hub-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.transfer-hub-name {
+  font-size: 12px;
+  color: var(--blip-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transfer-hub-sub {
+  font-size: 10px;
+  color: var(--blip-muted);
+}
+
+.transfer-hub-track {
+  height: 6px;
+  border: 1px solid var(--blip-accent);
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.transfer-hub-fill {
+  height: 100%;
+  background: var(--blip-accent);
+  transition: width 0.12s steps(6);
+}
+
+.transfer-hub-cancel {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 4px 8px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
 }
 
 .chat-file-pending {

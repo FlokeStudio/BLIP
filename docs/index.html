@@ -6,7 +6,7 @@
     <title>BLIP — GitHub</title>
     <meta
       name="description"
-      content="BLIP: P2P LAN messenger — no cloud. Electron + Vite, WebRTC. Repository krwg/BLIP."
+      content="BLIP 0.6.0 Portrait — P2P LAN messenger: chat, group voice, peer avatars. Electron + Vite, WebRTC. krwg/BLIP."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -306,7 +306,7 @@
 
     <main>
       <section class="hero">
-        <div class="hero-badge" data-i18n="badge">Open source · LAN · GPLv3</div>
+        <div class="hero-badge" data-i18n="badge">v0.6.0 Portrait · Open source · LAN · GPLv3</div>
         <h1 class="hero-title" data-i18n="title">Ты в сети. Ты сигнал.</h1>
         <p class="hero-sub" data-i18n="sub">
           Десктоп-мессенджер для локальной сети: чат и звонки без облака и без серверов. UDP + TCP discovery, WebRTC.
@@ -357,11 +357,11 @@
         </article>
         <article class="feature">
           <h3 data-i18n="f2h">Звонки</h3>
-          <p data-i18n="f2p">WebRTC: голос/видео в отдельном окне, сигналинг по тому же TCP, что и чат.</p>
+          <p data-i18n="f2p">Отдельные окна 1:1 и группового звонка; WebRTC по TCP; chiptune UI (СИГНАЛ / ПУЛЬС, MESH / СЕТКА).</p>
         </article>
         <article class="feature">
-          <h3 data-i18n="f3h">Mesh messages</h3>
-          <p data-i18n="f3p">Доставка и прочтение, реакции, фото по LAN, избранные и статус — без облака.</p>
+          <h3 data-i18n="f3h">Portrait</h3>
+          <p data-i18n="f3p">Аватары по LAN, полный RU/EN, автозапуск Windows, поиск в чате Ctrl+F, файлы до 100 ГБ, буфер обмена по сети.</p>
         </article>
         <article class="feature">
           <h3 data-i18n="f4h">Стек</h3>
@@ -383,10 +383,10 @@
       (function () {
         var STR = {
           ru: {
-            badge: 'Open source · LAN · GPLv3',
+            badge: 'v0.6.0 Portrait · Open source · LAN · GPLv3',
             title: 'Ты в сети. Ты сигнал.',
             sub:
-              'Десктоп-мессенджер для локальной сети: чат и звонки без облака и без серверов. UDP + TCP discovery, WebRTC. Electron + Vite, BLIP ID 1–64.',
+              'Десктоп-мессенджер для LAN: чат, группы, отдельное окно группового звонка, синхронизация аватаров. Без облака — UDP + TCP + WebRTC. BLIP ID 1–64.',
             star: 'Star на GitHub',
             releases: 'Релизы',
             joke:
@@ -395,10 +395,11 @@
             f1h: 'P2P LAN',
             f1p: 'Нет аккаунтов в облаке: узнаём соседей по UDP broadcast и mDNS, сообщения по TCP между пирами.',
             f2h: 'Звонки',
-            f2p: 'WebRTC-звонки и chiptune-звуки UI: рингтон, набор, мелодии mesh-сигнала.',
-            f3h: 'Mesh messages',
+            f2p:
+              'Отдельные окна 1:1 и группового звонка; WebRTC по TCP; chiptune UI (СИГНАЛ / ПУЛЬС, MESH / СЕТКА).',
+            f3h: 'Portrait',
             f3p:
-              'Доставка и прочтение, реакции, фото по LAN, избранные абоненты и статус Online/Away/Busy — без облака.',
+              'Аватары по LAN, полный RU/EN, автозапуск Windows, поиск в чате Ctrl+F, файлы до 100 ГБ, буфер обмена по сети.',
             f4h: 'Стек',
             f4p: 'Electron 35, Vite 6, vanilla JS. Windows — основная цель сборки NSIS/portable.',
             foot1: 'Код:',
@@ -409,10 +410,10 @@
             navIssues: 'Issues',
           },
           en: {
-            badge: 'Open source · LAN · GPLv3',
+            badge: 'v0.6.0 Portrait · Open source · LAN · GPLv3',
             title: "You're on the grid. You're the signal.",
             sub:
-              'Desktop LAN messenger: chat and calls with no cloud and no central servers. UDP + TCP discovery, WebRTC. Electron + Vite, BLIP IDs 1–64.',
+              'Desktop LAN messenger: chat, groups, dedicated group-call window, peer avatar sync. No cloud — UDP + TCP + WebRTC. BLIP IDs 1–64.',
             star: 'Star on GitHub',
             releases: 'Releases',
             joke:

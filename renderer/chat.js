@@ -8,12 +8,17 @@ import {
   isImageFile,
   validateChatFile,
 } from './chat-attachments.js';
+import { normalizeFileLimitGb } from './file-transfer-limits.js';
 import { formatFileSize } from './file-transfer.js';
+
+function formatFileLimitLabelForChat(config) {
+  return `${normalizeFileLimitGb(config?.maxFileTransferGb)} GB`;
+}
 import { createMessageId } from './message-id.js';
 
 const STORAGE_KEY = 'blip_chat_v1';
 const MAX_PER_PEER = 500;
-const REACTION_EMOJIS = ['👍', '❤️', '😂', '🔥', '👀'];
+const REACTION_EMOJI = '❤️';
 
 const messagesByPeer = new Map();
 
@@ -160,10 +165,21 @@ function appendFileAttachment(block, attachment, openExternalUrl) {
     dl.addEventListener('click', (e) => e.stopPropagation());
     card.appendChild(dl);
   } else if (attachment.pending) {
-    const pending = document.createElement('span');
-    pending.className = 'chat-file-pending';
-    pending.textContent = t('chat.file_sending').replace('{pct}', String(attachment.progress || 0));
-    card.appendChild(pending);
+    const pct = Math.min(100, Math.max(0, Number(attachment.progress) || 0));
+    const prog = document.createElement('div');
+    prog.className = 'chat-file-progress';
+    const track = document.createElement('div');
+    track.className = 'chat-file-progress-track';
+    const fill = document.createElement('div');
+    fill.className = 'chat-file-progress-fill';
+    fill.style.width = `${pct}%`;
+    track.appendChild(fill);
+    prog.appendChild(track);
+    const label = document.createElement('span');
+    label.className = 'chat-file-pending';
+    label.textContent = t('chat.file_sending').replace('{pct}', String(pct));
+    prog.appendChild(label);
+    card.appendChild(prog);
   }
   block.appendChild(card);
 }
@@ -493,9 +509,15 @@ export function createChatView(
     }
     if (!onSendFile) return;
     try {
-      validateChatFile(file);
+      validateChatFile(file, config);
     } catch (err) {
-      alert(t(err?.message === 'file_too_big' ? 'chat.file_too_big' : 'chat.attach_failed'));
+      const limitKey =
+        err?.message === 'file_too_big' ? 'chat.file_too_big_dynamic' : 'chat.attach_failed';
+      alert(
+        err?.message === 'file_too_big'
+          ? t(limitKey).replace('{limit}', formatFileLimitLabelForChat(config))
+          : t('chat.attach_failed')
+      );
       return;
     }
     const pendingId = createMessageId();
@@ -623,9 +645,9 @@ export function createChatView(
     addBtn.type = 'button';
     addBtn.className = 'chat-reaction-add';
     addBtn.title = t('chat.react');
-    addBtn.textContent = '+';
+    addBtn.textContent = REACTION_EMOJI;
     addBtn.addEventListener('click', () => {
-      const emoji = REACTION_EMOJIS[0];
+      const emoji = REACTION_EMOJI;
       toggleReactionOnMessage(peerId, m.id, emoji, selfId);
       void onReaction?.(peerId, { messageId: m.id, emoji, add: true });
       renderMessages();

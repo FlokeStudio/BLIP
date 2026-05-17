@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' http://localhost:5173; style-src 'self' 'unsafe-inline' http://localhost:5173; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws: http://localhost:5173 ws://localhost:5173;" />
+  <title>BLIP — Group call</title>
+  <link rel="stylesheet" href="./themes.css" />
+  <link rel="stylesheet" href="./styles.css" />
+  <style>
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+    #group-call-shell { display: flex; flex-direction: column; height: 100%; }
+    #group-call-root {
+      flex: 1;
+      min-height: 0;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    #group-call-root .group-call-overlay {
+      position: absolute !important;
+      inset: 0 !important;
+      z-index: 2;
+    }
+    .group-call-window-titlebar {
+      display: flex;
+      align-items: center;
+      height: 36px;
+      padding: 0 8px;
+      background: var(--blip-bg);
+      border-bottom: 2px solid var(--blip-accent);
+      -webkit-app-region: drag;
+      font-size: 11px;
+      text-transform: uppercase;
+      color: var(--blip-accent);
+      letter-spacing: 2px;
+    }
+    .group-call-window-titlebar .title-spacer { flex: 1; }
+    .group-call-window-titlebar .win-controls {
+      display: flex;
+      -webkit-app-region: no-drag;
+    }
+  </style>
+</head>
+<body>
+  <div id="group-call-shell">
+    <div class="group-call-window-titlebar">
+      <span id="group-call-win-title" data-i18n="group.call_window_title">GROUP CALL</span>
+      <span class="title-spacer"></span>
+      <div class="win-controls">
+        <button type="button" class="win-btn" id="group-call-win-min" aria-label="Minimize">—</button>
+        <button type="button" class="win-btn" id="group-call-win-max" aria-label="Maximize">□</button>
+        <button type="button" class="win-btn win-close" id="group-call-win-close" aria-label="Close">×</button>
+      </div>
+    </div>
+    <div id="group-call-root"></div>
+  </div>
+  <script type="module" src="./group-call-window-main.js"></script>
+</body>
+</html>

@@ -1,4 +1,7 @@
-export const MAX_CHAT_FILE_BYTES = 16 * 1024 * 1024;
+import { getMaxFileBytes } from './file-transfer-limits.js';
+
+/** Legacy default; use getMaxFileBytes(config) in app code. */
+export const MAX_CHAT_FILE_BYTES = 100 * 1024 * 1024 * 1024;
 export const INLINE_FILE_BYTES = 768 * 1024;
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_EDGE = 960;
@@ -90,10 +93,11 @@ export async function encodeChatImageAttachment(file) {
  * Small generic file inline in a chat message (data URL).
  * @param {File} file
  */
-export async function encodeInlineFileAttachment(file) {
+export async function encodeInlineFileAttachment(file, config) {
   if (!file || !file.size) throw new Error('empty');
   if (file.size > INLINE_FILE_BYTES) throw new Error('use_chunked');
-  if (file.size > MAX_CHAT_FILE_BYTES) throw new Error('file_too_big');
+  const maxBytes = getMaxFileBytes(config);
+  if (file.size > maxBytes) throw new Error('file_too_big');
 
   const dataUrl = await readFileAsDataUrl(file);
   if (typeof dataUrl !== 'string' || dataUrl.length > MAX_INLINE_DATA_URL_CHARS) {
@@ -110,7 +114,7 @@ export async function encodeInlineFileAttachment(file) {
   };
 }
 
-export function validateChatFile(file) {
+export function validateChatFile(file, config) {
   if (!file || !file.size) throw new Error('empty');
-  if (file.size > MAX_CHAT_FILE_BYTES) throw new Error('file_too_big');
+  if (file.size > getMaxFileBytes(config)) throw new Error('file_too_big');
 }

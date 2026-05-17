@@ -13,6 +13,8 @@ const DEFAULT_CONFIG = {
   animatedBgId: 'none',
   /** When true, the main window close button hides to tray instead of exiting (Windows default on). */
   closeToTray: process.platform === 'win32',
+  /** Launch BLIP when the user signs in to the OS. */
+  launchAtLogin: false,
   /** OS toast when a new chat message arrives (main window). */
   desktopNotifications: true,
   desktopCallNotifications: true,
@@ -42,6 +44,14 @@ const DEFAULT_CONFIG = {
   trustedPeerIds: [],
   /** BLIP IDs blocked at TCP layer */
   blockedPeerIds: [],
+  /** Max LAN file transfer size: 1 | 10 | 50 | 100 (GB) */
+  maxFileTransferGb: 10,
+  /** Stream quality: low | hd | fhd | max */
+  streamQuality: 'fhd',
+  /** Fullscreen video target: low | hd | fhd | max (defaults to streamQuality) */
+  fullscreenQuality: 'fhd',
+  /** LAN clipboard: off | active (open 1:1 chat) | trusted */
+  clipboardSyncMode: 'off',
   /** TOFU: blipId string → meshPublicKey */
   knownPeerKeys: {},
 };

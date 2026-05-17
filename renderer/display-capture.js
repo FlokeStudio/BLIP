@@ -1,11 +1,11 @@
-import { SCREEN_CAPTURE_CONSTRAINTS } from './call-media.js';
+import { getScreenCaptureConstraints, getScreenCaptureMandatory } from './call-media.js';
 
 /**
  * Capture a picked desktopCapturer source in Electron (reliable vs getDisplayMedia handler).
  * @param {string} sourceId
  * @returns {Promise<MediaStream>}
  */
-export async function captureDisplayStream(sourceId) {
+export async function captureDisplayStream(sourceId, config) {
   if (!sourceId || typeof sourceId !== 'string') {
     throw new Error('no_source');
   }
@@ -34,7 +34,7 @@ export async function captureDisplayStream(sourceId) {
   if (window.blip?.prepareDisplayCapture) {
     const prepared = await window.blip.prepareDisplayCapture(sourceId);
     if (prepared?.ok) {
-      return navigator.mediaDevices.getDisplayMedia(SCREEN_CAPTURE_CONSTRAINTS);
+      return navigator.mediaDevices.getDisplayMedia(getScreenCaptureConstraints(config));
     }
   }
 

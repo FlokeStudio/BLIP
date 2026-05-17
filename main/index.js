@@ -60,6 +60,7 @@ function loadAppMetadata() {
 
 let mainWindow = null;
 let callWindow = null;
+let groupCallWindow = null;
 let discovery = null;
 let tcpServer = null;
 let config = null;
@@ -203,6 +204,80 @@ async function ensureCallWindow() {
   return callWindow;
 }
 
+function getGroupCallWindowUrl() {
+  if (useViteDev) return 'http://localhost:5173/group-call-window.html';
+  const p = join(rootDir, 'dist/group-call-window.html');
+  if (existsSync(p)) return p;
+  return 'http://localhost:5173/group-call-window.html';
+}
+
+async function ensureGroupCallWindow() {
+  if (groupCallWindow && !groupCallWindow.isDestroyed()) return groupCallWindow;
+
+  const icon = getWindowIcon();
+  groupCallWindow = new BrowserWindow({
+    width: 720,
+    height: 520,
+    minWidth: 560,
+    minHeight: 420,
+    frame: false,
+    show: false,
+    icon,
+    title: 'BLIP — Group call',
+    backgroundColor: '#0a0a0a',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: preloadPath,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+  groupCallWindow.setMenuBarVisibility(false);
+
+  const url = getGroupCallWindowUrl();
+  console.log('[BLIP] Group call window load:', url);
+  if (url.startsWith('http')) {
+    await groupCallWindow.loadURL(url);
+  } else {
+    await groupCallWindow.loadFile(url);
+  }
+
+  groupCallWindow.on('closed', () => {
+    groupCallWindow = null;
+  });
+
+  return groupCallWindow;
+}
+
+async function sendToGroupCallWindow(channel, data, { focus = true } = {}) {
+  try {
+    const win = await ensureGroupCallWindow();
+    if (!win || win.isDestroyed()) return;
+    if (focus) {
+      win.show();
+      win.focus();
+    }
+    win.webContents.send(channel, data);
+  } catch (e) {
+    console.error('[BLIP] sendToGroupCallWindow', channel, e);
+  }
+}
+
+function applyLaunchAtLogin(enabled) {
+  if (process.platform !== 'win32' && process.platform !== 'darwin' && process.platform !== 'linux') {
+    return;
+  }
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: !!enabled,
+      openAsHidden: false,
+    });
+  } catch (e) {
+    console.warn('[BLIP] launchAtLogin', e?.message || e);
+  }
+}
+
 async function sendToCallWindow(channel, data, { focus = true } = {}) {
   try {
     const win = await ensureCallWindow();
@@ -232,6 +307,12 @@ function patchConfig(updates) {
   }
   if (callWindow && !callWindow.isDestroyed()) {
     callWindow.webContents.send('config-updated', config);
+  }
+  if (groupCallWindow && !groupCallWindow.isDestroyed()) {
+    groupCallWindow.webContents.send('config-updated', config);
+  }
+  if (updates?.launchAtLogin !== undefined) {
+    applyLaunchAtLogin(config.launchAtLogin);
   }
   return config;
 }
@@ -362,14 +443,25 @@ function handleTcpPayload(msg, fromBlipId) {
     case 'group-sync':
     case 'group-leave':
     case 'group-disband':
-    case 'group-call-start':
-    case 'group-call-state':
+    case 'avatar-sync':
+      sendToRenderer('tcp-message', msg);
+      break;
     case 'group-call-signal':
+      void sendToGroupCallWindow('group-call-tcp', msg, { focus: false });
+      break;
+    case 'group-call-start':
+      sendToRenderer('tcp-message', msg);
+      break;
+    case 'group-call-state':
     case 'group-call-end':
+      sendToRenderer('tcp-message', msg);
+      void sendToGroupCallWindow('group-call-tcp', msg, { focus: false });
+      break;
     case 'file-offer':
     case 'file-chunk':
     case 'file-done':
     case 'file-abort':
+    case 'clipboard-push':
       sendToRenderer('tcp-message', msg);
       break;
     case 'call-offer': {
@@ -532,6 +624,12 @@ function setupIpc() {
     }
     if (callWindow && !callWindow.isDestroyed()) {
       callWindow.webContents.send('config-updated', config);
+    }
+    if (groupCallWindow && !groupCallWindow.isDestroyed()) {
+      groupCallWindow.webContents.send('config-updated', config);
+    }
+    if (updates?.launchAtLogin !== undefined) {
+      applyLaunchAtLogin(config.launchAtLogin);
     }
     if (
       updates?.globalShortcutsEnabled !== undefined ||
@@ -780,6 +878,38 @@ function setupIpc() {
     return true;
   });
 
+  ipcMain.handle('open-group-call', async (_, payload) => {
+    await sendToGroupCallWindow(
+      'group-call-join',
+      { groupId: payload?.groupId, skipInvite: !!payload?.skipInvite },
+      { focus: true }
+    );
+    return { ok: true };
+  });
+
+  ipcMain.handle('open-group-call-incoming', async (_, payload) => {
+    await sendToGroupCallWindow('group-call-incoming', payload || {}, { focus: true });
+    return { ok: true };
+  });
+
+  ipcMain.handle('leave-group-call', async () => {
+    await sendToGroupCallWindow('group-call-leave', {}, { focus: false });
+    return { ok: true };
+  });
+
+  ipcMain.handle('close-group-call-window', () => {
+    if (groupCallWindow && !groupCallWindow.isDestroyed()) {
+      groupCallWindow.hide();
+    }
+    return true;
+  });
+
+  ipcMain.on('group-call-active', (_, data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('group-call-active', data);
+    }
+  });
+
   ipcMain.on('window-minimize', () => mainWindow?.minimize());
   ipcMain.on('window-maximize', () => {
     if (mainWindow?.isMaximized()) mainWindow.unmaximize();
@@ -804,6 +934,17 @@ function setupIpc() {
   ipcMain.handle('call-window-is-fullscreen', () => {
     if (!callWindow || callWindow.isDestroyed()) return false;
     return callWindow.isFullScreen();
+  });
+
+  ipcMain.on('group-call-window-minimize', () => groupCallWindow?.minimize());
+  ipcMain.on('group-call-window-maximize', () => {
+    if (!groupCallWindow || groupCallWindow.isDestroyed()) return;
+    if (groupCallWindow.isMaximized()) groupCallWindow.unmaximize();
+    else groupCallWindow.maximize();
+  });
+  ipcMain.on('group-call-window-close', () => {
+    void sendToGroupCallWindow('group-call-leave', {}, { focus: false });
+    if (groupCallWindow && !groupCallWindow.isDestroyed()) groupCallWindow.hide();
   });
 }
 
@@ -877,6 +1018,8 @@ app.whenReady().then(async () => {
     app.quit();
     return;
   }
+
+  applyLaunchAtLogin(!!config.launchAtLogin);
 
   setupIpc();
   createWindow();

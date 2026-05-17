@@ -58,6 +58,7 @@ Quick VM flow: host runs BLIP (ID **1**), VM runs BLIP (ID **2**), same subnet v
 | | |
 |---|---|
 | **What** | Desktop app: text, voice, and video over LAN / Hamachi / Radmin VPN |
+| **Release** | **0.6.0 — Portrait** (see [`CHANGELOG.md`](CHANGELOG.md)) |
 | **Identity** | BLIP ID **1–64** (8×8 grid, Minecraft-style chunk metaphor) |
 | **Servers** | None — UDP broadcast, TCP, and WebRTC peer-to-peer only |
 | **Sign-up** | None |
@@ -69,23 +70,25 @@ Quick VM flow: host runs BLIP (ID **1**), VM runs BLIP (ID **2**), same subnet v
 |---------|-------------|
 | **BLIP ID** | Pick a number on the 8×8 grid; conflicts resolved via TCP ping |
 | **Discovery** | UDP `42069` + mDNS fallback |
-| **Chat** | TCP messages, receipts (✓/✓✓), reactions, LAN images, linkify, emoji picker, search/export, typing, unread |
+| **Chat** | TCP messages, receipts (✓/✓✓), reactions, LAN images, linkify, emoji picker, **Ctrl+F** search, export, typing, unread |
+| **Groups** | Group chat (host relay), invites, host failover, **group voice** with join-anytime bar and **VOICE** badge in hub |
 | **Favorites** | Star peers locally; sorted first on Peers and Chat |
 | **Presence** | Online / Away / Busy in Profile (UDP announce) |
-| **Calls** | Separate call window; WebRTC voice/video (LAN, no STUN/TURN) |
-| **Screen share** | 720p+ capture, theater layout, fullscreen (**F**), no wallpaper over video |
+| **Calls** | Separate **1:1** and **group** call windows; WebRTC voice/video (LAN, no STUN/TURN) |
+| **Screen share** | 720p+ capture, theater layout, fullscreen (**F**), stream/fullscreen quality in Settings |
 | **Mesh Pulse** | Live LAN heartbeat — auto ping every minute, latency under each peer |
 | **Trust & block** | First-chat confirm; local block list; **Settings → Privacy** |
-| **Avatars** | Upload, regenerate, or 8×8 generated from ID |
+| **Avatars** | Upload, regenerate, or 8×8 generated from ID; **custom photos sync to peers** over LAN (`avatar-sync`) |
 | **Themes** | Light/dark palettes + animated backgrounds (EN/RU names) |
 | **Sound** | Chiptune Web Audio — **SIGNAL** / **PULSE** FX packs, **MESH** / **GRID** call melodies; preview in **Settings → Sound**; DND mutes all |
-| **Files** | P2P file send in chat (up to 16 MB, chunked); drag & drop; group inline files ≤768 KB |
+| **Files** | P2P send in chat (1–100 GB limit in Settings, chunked); drag & drop; group inline ≤768 KB + chunked to all members |
+| **Clipboard** | Optional LAN clipboard sync — **Settings → Network** (off / active chat / trusted peers) |
 | **Status** | Custom status line on LAN (Profile) — “In game”, AFK, etc. |
-| **Handshake** | Ed25519 signed announce + TCP mesh handshake (0.5); block list enforced in main |
+| **Handshake** | Ed25519 signed announce + TCP mesh handshake (0.5+); block list enforced in main |
 | **Shortcuts** | In-window + system-wide (**Alt+1–4**, tray-safe) |
-| **Languages** | English / Russian |
-| **Settings** | Profile, privacy/block list, appearance, network, shortcuts, call devices |
-| **Window** | Custom title bar, system tray, close-to-tray (Windows) |
+| **Languages** | Full **English / Russian** UI (including group call chrome and badges) |
+| **Settings** | Profile, privacy/block list, appearance, network, shortcuts, call devices, transfers |
+| **Window** | Custom title bar, system tray, close-to-tray (Windows), **launch at login** (Windows) |
 | **Updates** | Auto-check on startup (packaged builds) |
 
 <h3 id="en-architecture">Architecture</h3>
@@ -176,8 +179,8 @@ Icons: root `icon.svg` → `npm run build:icons` → `build/icon.ico`.
 
 | Command | Output |
 |---------|--------|
-| `npm run electron:build` | **`BLIP-Setup-0.4.0.exe`** — full NSIS installer (version from `app-metadata.json`) |
-| `npm run electron:build:portable` | **`BLIP-0.4.0-Portable.exe`** — single-file portable |
+| `npm run electron:build` | **`BLIP-Setup-0.6.0.exe`** — full NSIS installer (version from `app-metadata.json`) |
+| `npm run electron:build:portable` | **`BLIP-0.6.0-Portable.exe`** — single-file portable |
 | `npm run electron:build:all` | Both artifacts |
 | `npm run electron:build:dir` | `dist-electron/win-unpacked/BLIP.exe` (debug folder) |
 
@@ -227,8 +230,10 @@ Icons: root `icon.svg` → `npm run build:icons` → `build/icon.ico`.
 3. Open **SETTINGS**: display name, **EN / RU**, themes, notifications, audio devices.
 4. **DIAL** — enter a BLIP ID (centered); **MESSAGE** opens chat, **CALL** starts a voice call.
 5. **PEERS** — online list with **Mesh Pulse** latency (auto refresh every minute); click to chat; right-click for Mesh label, ping, block.
-6. **CHAT** — typing indicator when the peer composes; unread badge on the nav until you open the thread.
-7. **Calls** — separate window: **M** mute, **D** deafen, **S** screen share, **F** fullscreen, **Esc** hang up.
+6. **CHAT** — typing indicator when the peer composes; unread badge on the nav until you open the thread; **Ctrl+F** search in the open thread; hub shows **GRP** / **VOICE** for groups.
+7. **Groups** — create from chat hub; **GRP CALL** starts voice; ongoing calls show a join bar; group voice runs in a **separate window** titled **Group call**.
+8. **Calls (1:1)** — separate window: **M** mute, **D** deafen, **S** screen share, **F** fullscreen, **Esc** hang up.
+9. **Profile** — upload an avatar; peers on the LAN receive it automatically. **Settings → System** — optional **Start BLIP when Windows starts**.
 
 > Open firewall ports **42069–42070** only if peers are not discovered.
 
@@ -241,8 +246,9 @@ Icons: root `icon.svg` → `npm run build:icons` → `build/icon.ico`.
 | Main | **Ctrl+F** | Focus chat search (open conversation) |
 | Main (system, optional) | Same as above + **Ctrl+Shift+D** (DND), **Ctrl+Shift+End** (hang up) | Works from tray — toggle in **Settings → Shortcuts** |
 | Call window | **M** / **D** / **S** / **F** | Mute / deafen / screen share / fullscreen |
-| Call window | **Enter** | Accept incoming call |
-| Call window | **Esc** | End call |
+| Call window (1:1 or group) | **Enter** | Accept incoming call (1:1) / group invite |
+| Call window | **Esc** | End / leave call |
+| Group call window | Title bar **— □ ×** | Minimize / maximize / close (close leaves the call) |
 
 <h3 id="en-fonts">Fonts</h3>
 
@@ -259,12 +265,16 @@ Re-copy manually: `npm run copy-fonts`.
 
 ```
 blip/
-├── main/              # Electron: discovery, TCP, tray
-├── renderer/          # UI, chat, call, i18n, styles
+├── main/              # Electron: discovery, TCP, tray, window routing
+├── renderer/          # UI, chat, call, group-call, i18n, styles
+│   ├── call-window.html / group-call-window.html  # separate BrowserWindows
+│   ├── group-call-roster.js · peer-avatars.js · avatar-sync.js
 │   └── assets/fonts/  # Minecraft woff2/ttf
+├── docs/              # ARCHITECTURE.md + GitHub Pages landing
 ├── build/             # icon.ico, icon.png (generated)
+├── app-metadata.json  # version 0.6.0, codename Portrait
 ├── preload.cjs        # IPC bridge
-├── scripts/           # electron-dev, copy-fonts, build-icons
+├── scripts/           # electron-dev, copy-fonts, build-icons, sync metadata
 ├── icon.svg           # source app icon
 └── dist/              # Vite output (after npm run build)
 ```
@@ -321,6 +331,7 @@ The **Minecraft** font is licensed separately under [MIT](https://github.com/bs-
 | | |
 |---|---|
 | **Что это** | Desktop-приложение: текст, голос и видео по LAN / Hamachi / Radmin VPN |
+| **Релиз** | **0.6.0 — Portrait** (см. [`CHANGELOG.md`](CHANGELOG.md)) |
 | **Идентификация** | BLIP ID **1–64** (сетка 8×8) |
 | **Серверы** | Нет — только UDP broadcast, TCP и WebRTC между пирами |
 | **Регистрация** | Нет |
@@ -332,23 +343,25 @@ The **Minecraft** font is licensed separately under [MIT](https://github.com/bs-
 |---------|----------|
 | **BLIP ID** | Выбор номера на сетке 8×8, конфликты через TCP ping |
 | **Discovery** | UDP `42069` + mDNS fallback |
-| **Чат** | TCP: доставка/прочтение (✓/✓✓), реакции, фото по LAN, ссылки, эмодзи, поиск/экспорт, «печатает…», непрочитанное |
+| **Чат** | TCP: доставка/прочтение (✓/✓✓), реакции, фото по LAN, ссылки, эмодзи, **Ctrl+F** поиск, экспорт, «печатает…», непрочитанное |
+| **Группы** | Групповой чат (релей хоста), приглашения, смена хоста, **голос** с полосой «войти в любой момент» и бейджем **ГОЛОС** в hub |
 | **Избранное** | Звёздочка в меню абонента; сортировка вверху на Peers и в Chat |
 | **Статус** | В сети / Отошёл / Занят в профиле (UDP announce) |
-| **Звонки** | Отдельное окно; WebRTC голос/видео (LAN, без STUN/TURN) |
-| **Демонстрация экрана** | Захват 720p+, режим theater, полный экран (**F**), без фона поверх видео |
+| **Звонки** | Отдельные окна **1:1** и **группового** звонка; WebRTC (LAN, без STUN/TURN) |
+| **Демонстрация экрана** | Захват 720p+, theater, полный экран (**F**), качество потока/экрана в настройках |
 | **Mesh Pulse** | Живой пульс LAN: автопинг раз в минуту, задержка под каждым абонентом |
 | **Доверие и блок** | Подтверждение первого чата; локальный блок; **Настройки → Конфиденциальность** |
-| **Аватары** | Загрузка, пересоздание или 8×8 от ID |
+| **Аватары** | Загрузка, пересоздание или 8×8 от ID; **фото синхронизируется с абонентами** по LAN |
 | **Темы** | Светлые/тёмные палитры и анимированные фоны (названия EN/RU) |
 | **Звук** | Chiptune (Web Audio): наборы **СИГНАЛ** / **ПУЛЬС**, мелодии **MESH** / **СЕТКА**; прослушивание в **Настройки → Звук**; DND отключает |
-| **Файлы** | P2P в чате (до 16 МБ, чанки); drag & drop; в группе до 768 КБ |
-| **Статус** | Свой текст статуса в LAN (Профиль) — «в игре», AFK и т.д. |
-| **Handshake** | Подписанный announce + TCP mesh-handshake (0.5); блокировка в main |
+| **Файлы** | P2P в чате (лимит 1–100 ГБ в настройках, чанки); drag & drop; в группе ≤768 КБ inline + чанки всем |
+| **Буфер обмена** | Синхронизация по LAN — **Настройки → Сеть** (выкл / активный чат / доверенные) |
+| **Статус-текст** | Своя строка в LAN (Профиль) — «в игре», AFK и т.д. |
+| **Handshake** | Подписанный announce + TCP mesh-handshake (0.5+); блокировка в main |
 | **Горячие клавиши** | В окне + системные (**Alt+1–4**, из трея) |
-| **Языки** | English / Русский |
-| **Настройки** | Профиль, конфиденциальность/блок, вид, сеть, горячие клавиши, звонок |
-| **Окно** | Свой title bar, трей, сворачивание в трей (Windows) |
+| **Языки** | Полный интерфейс **EN / RU** (включая групповой звонок и бейджи) |
+| **Настройки** | Профиль, конфиденциальность/блок, вид, сеть, горячие клавиши, звонок, передачи |
+| **Окно** | Свой title bar, трей, в трей (Windows), **автозапуск при входе в Windows** |
 | **Обновления** | Проверка при запуске (собранные сборки) |
 
 <h3 id="ru-architecture">Архитектура</h3>
@@ -409,8 +422,8 @@ npx electron .
 
 | Команда | Результат |
 |---------|-----------|
-| `npm run electron:build` | **`BLIP-Setup-0.4.0.exe`** — установщик NSIS (версия из `app-metadata.json`) |
-| `npm run electron:build:portable` | **`BLIP-0.4.0-Portable.exe`** — portable |
+| `npm run electron:build` | **`BLIP-Setup-0.6.0.exe`** — установщик NSIS (версия из `app-metadata.json`) |
+| `npm run electron:build:portable` | **`BLIP-0.6.0-Portable.exe`** — portable |
 | `npm run electron:build:all` | Оба файла |
 | `npm run electron:build:dir` | `dist-electron/win-unpacked/BLIP.exe` |
 
@@ -460,8 +473,10 @@ npx electron .
 3. **НАСТРОЙКИ**: имя, **EN / RU**, темы, уведомления, устройства звука.
 4. **НАБОР** — введите BLIP ID (по центру); **СООБЩЕНИЕ** — чат, **ЗВОНОК** — голосовой звонок.
 5. **АБОНЕНТЫ** — список в сети, **Пульс · N мс** (автораз в минуту); клик — чат; ПКМ — Mesh label, пинг, блок.
-6. **ЧАТ** — «печатает…» у собеседника; счётчик непрочитанного на кнопке **Чат**.
-7. **Звонок** — отдельное окно: **M** микрофон, **D** звук, **S** экран, **F** полный экран, **Esc** сброс.
+6. **ЧАТ** — «печатает…»; непрочитанное на **Чат**; **Ctrl+F** — поиск в открытом чате; в hub — **ГРП** / **ГОЛОС** у групп.
+7. **Группы** — создать из hub; **ГРП ЗВОНОК** — голос; активный звонок — полоса «войти»; окно **Групповой звонок** с кнопками **— □ ×**.
+8. **Звонок 1:1** — отдельное окно: **M** / **D** / **S** / **F** / **Esc**.
+9. **Профиль** — аватар уходит абонентам по LAN. **Настройки → Система** — **запуск при старте Windows** (опционально).
 
 > Откройте порты **42069–42070** в firewall, только если пиры не видны.
 
@@ -474,8 +489,9 @@ npx electron .
 | Главное | **Ctrl+F** | Поиск в открытом чате |
 | Системные (опц.) | То же + **Ctrl+Shift+D** (не беспокоить), **Ctrl+Shift+End** (сброс звонка) | Из трея — в **Настройки → Горячие клавиши** |
 | Окно звонка | **M** / **D** / **S** / **F** | Микрофон / звук / экран / полный экран |
-| Окно звонка | **Enter** | Принять звонок |
-| Окно звонка | **Esc** | Сброс |
+| Окно звонка (1:1 или группа) | **Enter** | Принять (1:1) / приглашение в группу |
+| Окно звонка | **Esc** | Сброс / выход из группового |
+| Групповой звонок | **— □ ×** в title bar | Свернуть / развернуть / закрыть (закрытие = выход) |
 
 <h3 id="ru-fonts">Шрифты</h3>
 
@@ -492,14 +508,14 @@ npx electron .
 
 ```
 blip/
-├── main/              # Electron: discovery, TCP, tray
-├── renderer/          # UI, chat, call, i18n, styles
-│   └── assets/fonts/  # Minecraft woff2/ttf
-├── build/             # icon.ico, icon.png (генерируется)
-├── preload.cjs        # IPC bridge
-├── scripts/           # electron-dev, copy-fonts, build-icons
-├── icon.svg           # исходная иконка
-└── dist/              # Vite build
+├── main/              # Electron: discovery, TCP, tray, маршрутизация окон
+├── renderer/          # UI, chat, call, group-call, i18n, styles
+│   ├── call-window.html / group-call-window.html
+│   ├── group-call-roster.js · peer-avatars.js · avatar-sync.js
+│   └── assets/fonts/
+├── docs/              # ARCHITECTURE.md + лендинг Pages
+├── app-metadata.json  # 0.6.0 Portrait
+├── build/ · preload.cjs · scripts/ · icon.svg · dist/
 ```
 
 <h3 id="ru-design">Дизайн-система</h3>

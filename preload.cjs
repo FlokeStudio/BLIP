@@ -1,5 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+let groupCallActive = false;
+let groupCallGroupId = null;
+
 contextBridge.exposeInMainWorld('blip', {
   platform: process.platform,
   getConfig: () => ipcRenderer.invoke('get-config'),
@@ -120,4 +123,43 @@ contextBridge.exposeInMainWorld('blip', {
     ipcRenderer.on('global-hangup', handler);
     return () => ipcRenderer.removeListener('global-hangup', handler);
   },
+  openGroupCall: (payload) => ipcRenderer.invoke('open-group-call', payload),
+  openGroupCallIncoming: (payload) => ipcRenderer.invoke('open-group-call-incoming', payload),
+  leaveGroupCall: () => ipcRenderer.invoke('leave-group-call'),
+  closeGroupCallWindow: () => ipcRenderer.invoke('close-group-call-window'),
+  reportGroupCallActive: (data) => ipcRenderer.send('group-call-active', data),
+  isGroupCallActiveSync: () => groupCallActive,
+  getActiveGroupCallIdSync: () => groupCallGroupId,
+  onGroupCallActive: (cb) => {
+    const handler = (_, data) => {
+      groupCallActive = !!data?.active;
+      groupCallGroupId = data?.groupId ?? null;
+      cb(data);
+    };
+    ipcRenderer.on('group-call-active', handler);
+    return () => ipcRenderer.removeListener('group-call-active', handler);
+  },
+  onGroupCallJoin: (cb) => {
+    const handler = (_, data) => cb(data);
+    ipcRenderer.on('group-call-join', handler);
+    return () => ipcRenderer.removeListener('group-call-join', handler);
+  },
+  onGroupCallIncoming: (cb) => {
+    const handler = (_, data) => cb(data);
+    ipcRenderer.on('group-call-incoming', handler);
+    return () => ipcRenderer.removeListener('group-call-incoming', handler);
+  },
+  onGroupCallTcp: (cb) => {
+    const handler = (_, data) => cb(data);
+    ipcRenderer.on('group-call-tcp', handler);
+    return () => ipcRenderer.removeListener('group-call-tcp', handler);
+  },
+  onGroupCallLeave: (cb) => {
+    const handler = () => cb();
+    ipcRenderer.on('group-call-leave', handler);
+    return () => ipcRenderer.removeListener('group-call-leave', handler);
+  },
+  groupCallWindowMinimize: () => ipcRenderer.send('group-call-window-minimize'),
+  groupCallWindowMaximize: () => ipcRenderer.send('group-call-window-maximize'),
+  groupCallWindowClose: () => ipcRenderer.send('group-call-window-close'),
 });

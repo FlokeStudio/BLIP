@@ -65,12 +65,15 @@ Version and codename live in [`app-metadata.json`](app-metadata.json) (synced in
 
 ## TCP payloads (renderer ↔ main)
 
-Chat and signalling use newline-delimited JSON on TCP port **42070**. Common `type` values: `message`, `typing`, `ping`/`pong`, `call-*`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Chat and signalling use newline-delimited JSON on TCP port **42070**. Common `type` values: `message`, `typing`, `ping`/`pong`, `call-*`, `avatar-sync`, `group-*`, `group-call-*`, `file-*`, `clipboard-push`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+The renderer Vite build produces three HTML entry points: `index.html`, `call-window.html`, `group-call-window.html`.
 
 ## Version / metadata
 
-- Release version and display metadata live in **`app-metadata.json`**.
+- Release version and display metadata live in **`app-metadata.json`** (current line: **0.6.0 — Portrait**).
 - `npm run build` runs `scripts/sync-app-metadata.mjs` so `package.json`’s `version` stays in sync.
+- User-facing release notes go in **`CHANGELOG.md`** before tagging.
 
 ## Code style
 

@@ -14,7 +14,11 @@ High-level map of how pieces fit together. For build and contribution workflow s
 ┌─────────┴─────────────────────────────────────────────────────────┐
 │ Renderer (Vite bundles)                                             │
 │  renderer/main.js · ui.js · chat.js · call.js · call-media.js …  │
-│  renderer/call-window.html + call-window-main.js (call window)   │
+│  renderer/call-window.html + call-window-main.js (1:1 call)      │
+│  renderer/group-call-window.html + group-call-window-main.js     │
+│  renderer/group-call-client.js — main-window IPC bridge          │
+│  renderer/group-call-roster.js — ongoing voice state (main UI)   │
+│  renderer/peer-avatars.js · avatar-sync.js — LAN profile photos  │
 │  main/global-shortcuts.js — OS hotkeys when tray-hidden           │
 └─────────────────────────────────────────────────────────────────┘
 
@@ -27,8 +31,11 @@ connection as chat messages; media is peer-to-peer in the renderer.
 | Piece | Role |
 |--------|------|
 | **Main** | TCP server/client coordination, discovery, IPC to all renderers. |
-| **Main window** | Chat, dial, peers, settings (`dist/index.html` or Vite dev URL). |
-| **Call window** | Separate `BrowserWindow` loads `call-window.html` — WebRTC UI isolation. Uses theme colors only (`applyCallWindowAppearance`); animated wallpapers disabled so video/screen share stay clean. |
+| **Main window** | Chat, dial, peers, settings (`dist/index.html` or Vite dev URL). Hosts group-call **roster** badges only (not WebRTC). |
+| **Call window** | `call-window.html` — 1:1 WebRTC UI. Theme colors only (`applyCallWindowAppearance`); animated wallpapers disabled. |
+| **Group call window** | `group-call-window.html` — group mesh WebRTC + tiles; custom title bar (**Group call** / **Групповой звонок**). Routed from main via IPC (`open-group-call`, `group-call-tcp`, …). |
+
+Vite build entries: `index.html`, `call-window.html`, `group-call-window.html` (`vite.config.js`).
 
 ## Networking
 
@@ -52,6 +59,11 @@ Environment overrides: `BLIP_UDP_PORT`, `BLIP_TCP_PORT`. Separate user data dirs
 | `call-offer` / `call-answer` / `call-candidate` / `call-reject` / `call-hangup` | Peer ↔ peer | WebRTC signalling |
 | `call-state` | Peer ↔ peer | Mute / deafen / screen-share flags |
 | `call-renegotiate` / `call-renegotiate-answer` | Peer ↔ peer | Mid-call SDP (e.g. screen share on voice calls) |
+| `avatar-sync` | Peer ↔ peer | Optional JPEG `dataUrl` for profile photo (or `null` to clear) |
+| `group-invite` / `group-invite-ack` / `group-msg` / `group-host` / `group-sync` / `group-leave` / `group-disband` | Mesh | Group membership and chat relay |
+| `group-call-start` / `group-call-state` / `group-call-signal` / `group-call-end` | Mesh | Group voice mesh (signals peer-to-peer; state broadcast) |
+| `file-offer` / `file-chunk` / `file-done` / `file-abort` | Peer ↔ peer | Chunked large files |
+| `clipboard-push` | Peer ↔ peer | LAN clipboard text (mode-gated in renderer) |
 
 ## Persistence
 
@@ -60,7 +72,9 @@ Environment overrides: `BLIP_UDP_PORT`, `BLIP_TCP_PORT`. Separate user data dirs
 | User config (`blipId`, name, language, `presenceStatus`, audio devices, `globalShortcutsEnabled`, …) | Electron `userData` → `blip-config.json`. |
 | Chat history | Renderer `localStorage` key `blip_chat_v1`. |
 | Favorite peer IDs | Renderer `localStorage` key `blip_favorites_v1`. |
-| Release metadata | `app-metadata.json` (version, codename, repo URL). |
+| Peer avatar cache | Renderer `localStorage` key `blip_peer_avatars_v1` (`peer-avatars.js`). |
+| Custom avatar (self) | Renderer `localStorage` key `blip_avatar_custom_v1` (`avatar.js`). |
+| Release metadata | `app-metadata.json` (version **0.6.0**, codename **Portrait**, repo URL). |
 
 ## Security posture (today)
 
@@ -117,23 +131,47 @@ Codename **Handshake**. Each client has an Ed25519 keypair in `blip-config.json`
 
 Legacy peers without `meshProto` appear with `meshLegacy` — TCP mesh with 0.5 requires both sides on Handshake.
 
-## File transfer (0.4.8)
+## File transfer
 
 | Mode | Limit | Wire |
 |------|-------|------|
 | Inline | ≤768 KB | `message.attachment` with `kind: 'file'` + data URL |
-| Chunked | ≤16 MB | `file-offer` → `file-chunk` × N → `file-done`; receiver gets a chat message with assembled blob |
+| Chunked (1:1) | Config `maxFileTransferGb` (1–100 GB) | `file-offer` → `file-chunk` × N → `file-done` |
+| Chunked (group) | Same cap | Per-member offers via `group-file-transfer.js` |
 
-Images still use `kind: 'image'` (JPEG resize). Group `group-msg` relays `attachment` for inline files only.
+Images use `kind: 'image'` (JPEG resize). Group `group-msg` relays inline attachments; large files use chunked mesh to each member.
+
+## LAN clipboard (0.5.8+)
+
+Config `clipboardSyncMode`: `off` | `active` (open 1:1 chat) | `trusted`. Renderer `clipboard-sync.js` sends `clipboard-push` (text, max 32 KB). Main forwards like other TCP types.
+
+## Peer avatars (0.6.0 — Portrait)
+
+| Piece | Role |
+|--------|------|
+| `avatar.js` | Local upload/regenerate; `createAvatarElement` shows self custom + cached peer photos. |
+| `peer-avatars.js` | In-memory + `localStorage` cache per `blipId`. |
+| `avatar-sync.js` | `broadcastAvatarToPeers` / `handleAvatarSyncMessage`; TCP `avatar-sync`. |
+
+On peer online or avatar change, main renderer pushes own JPEG data URL to that peer. Peers dispatch `blip-peer-avatar-changed` to refresh lists and chat headers.
 
 ## Presence text (0.4.8)
 
 UDP/mDNS announce includes optional `presenceText` (max 48 chars, sanitized). Shown on the **Peers** list instead of pulse line when the peer is online. Config key: `presenceText`.
 
-## Group mesh (0.4.5)
+## Group mesh
 
 - **Group chat**: host relays `group-msg` to all members; `group-invite` / `group-host` for membership and host failover.
-- **Group call**: mesh WebRTC voice; `group-call-signal` relayed through host (`renderer/group-call.js`).
+- **Group call (0.6.0)**:
+  - **UI + WebRTC** in `group-call-window.html` (`renderer/group-call.js`).
+  - **Main window** uses `group-call-client.js` → IPC `openGroupCall` / `openGroupCallIncoming`; roster in `group-call-roster.js` drives hub **VOICE** badge and join bar (`blip-group-call-state` event).
+  - **Signaling**: `group-call-signal` is peer-to-peer (`originFrom`); main process forwards signals only to the group-call window.
+  - **State**: `group-call-state` lists participants + mute/deafen/screen flags; `group-call-start` / `group-call-end` for invites and teardown.
+  - Ongoing calls: non-participants can join anytime (Discord-style bar in `group-chat.js`).
+
+## Autostart (0.6.0)
+
+Windows: `config.launchAtLogin` → `app.setLoginItemSettings({ openAtLogin })` in main on load and on `save-config`. Toggle in **Settings → System**.
 
 ## Mesh Pulse
 
@@ -154,6 +192,11 @@ While the app is running with a BLIP ID, the renderer pings every **online, non-
 - URLs in text are linkified in the renderer; `openExternal` opens http(s) only.
 - Favorite peers (`renderer/peer-favorites.js`) are local-only sort hints.
 
+## i18n (0.6.0)
+
+All user-visible chrome in `renderer/i18n.js` (EN + RU), including group call window title, link/voice badges, host line (`group.you_host`), and settings labels. `applyI18n` runs on language change in each window.
+
 ## Future seams
 
 - CI packaging smoke jobs, mobile client, optional STUN for routed VPN edge cases.
+- macOS/Linux autostart parity beyond Windows login items.

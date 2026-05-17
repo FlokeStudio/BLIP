@@ -31,6 +31,7 @@ We aim to acknowledge within a few days; timelines depend on maintainer availabi
 
 - Remote code execution, unsafe IPC, or unsafe `shell.openExternal` usage
 - WebRTC / preload bridge weaknesses that break `contextIsolation` assumptions
+- Unauthenticated or oversized `avatar-sync` / `clipboard-push` payloads on the LAN mesh
 - Packaging / auto-update integrity (when implemented)
 
 ## Out of scope

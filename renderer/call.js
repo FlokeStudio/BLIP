@@ -2,11 +2,11 @@ import { t, applyI18n } from './i18n.js';
 import { sounds } from './audio.js';
 import { createAvatarElement } from './avatar.js';
 import {
-  CAMERA_VIDEO_CONSTRAINTS,
-  SCREEN_CAPTURE_CONSTRAINTS,
+  getCameraVideoConstraints,
   applyScreenTrackConstraints,
   tuneVideoSender,
   trackLooksLikeScreen,
+  applyCallFullscreenLayout,
 } from './call-media.js';
 import { openScreenPickerDialog } from './screen-picker-dialog.js';
 import { captureDisplayStream } from './display-capture.js';
@@ -284,6 +284,12 @@ export function createCallUI(config, api, options = {}) {
     return remoteVideo.srcObject ? remoteVideo : localVideo;
   }
 
+  function activeStageVideo() {
+    if (sharingScreen) return localVideo;
+    if (stageMode === 'remote' || stageMode === 'both') return remoteVideo;
+    return remoteVideo.srcObject ? remoteVideo : localVideo;
+  }
+
   async function exitPseudoFullscreen() {
     if (window.blip?.callWindowIsFullScreen) {
       try {
@@ -299,6 +305,7 @@ export function createCallUI(config, api, options = {}) {
     document.getElementById('call-shell')?.classList.remove('call-shell--video-fs');
     videoWrap.classList.remove('call-video-wrap--fullscreen');
     overlay.classList.remove('call-overlay--theater-fs');
+    applyCallFullscreenLayout(videoWrap, null, config, false);
     syncFullscreenButton();
   }
 
@@ -311,6 +318,11 @@ export function createCallUI(config, api, options = {}) {
         shell?.classList.toggle('call-shell--video-fs', pseudoFullscreen);
         videoWrap.classList.toggle('call-video-wrap--fullscreen', pseudoFullscreen);
         overlay.classList.toggle('call-overlay--theater-fs', pseudoFullscreen);
+        if (pseudoFullscreen) {
+          applyCallFullscreenLayout(videoWrap, activeStageVideo(), config, true);
+        } else {
+          applyCallFullscreenLayout(videoWrap, null, config, false);
+        }
         syncFullscreenButton();
         return;
       } catch (err) {
@@ -329,6 +341,7 @@ export function createCallUI(config, api, options = {}) {
       const host = videoWrap;
       if (host.requestFullscreen) {
         await host.requestFullscreen();
+        applyCallFullscreenLayout(videoWrap, activeStageVideo(), config, true);
         return;
       }
       if (host.webkitRequestFullscreen) {
@@ -343,6 +356,7 @@ export function createCallUI(config, api, options = {}) {
     shell?.classList.toggle('call-shell--video-fs', pseudoFullscreen);
     videoWrap.classList.toggle('call-video-wrap--fullscreen', pseudoFullscreen);
     overlay.classList.toggle('call-overlay--theater-fs', pseudoFullscreen);
+    applyCallFullscreenLayout(videoWrap, pseudoFullscreen ? activeStageVideo() : null, config, pseudoFullscreen);
     syncFullscreenButton();
   }
 
@@ -354,7 +368,9 @@ export function createCallUI(config, api, options = {}) {
   }
 
   document.addEventListener('fullscreenchange', () => {
-    if (!document.fullscreenElement) exitPseudoFullscreen();
+    const on = !!document.fullscreenElement;
+    applyCallFullscreenLayout(videoWrap, on ? activeStageVideo() : null, config, on);
+    if (!on) exitPseudoFullscreen();
     syncFullscreenButton();
   });
 
@@ -500,14 +516,14 @@ export function createCallUI(config, api, options = {}) {
     const sender = getVideoSender();
     if (sender) {
       await sender.replaceTrack(track);
-      await tuneVideoSender(sender, { screenShare });
+      await tuneVideoSender(sender, { screenShare, config });
       return;
     }
     if (!track) return;
     const stream = new MediaStream([track]);
     pc.addTrack(track, stream);
     await renegotiateAsOffer();
-    await tuneVideoSender(getVideoSender(), { screenShare });
+    await tuneVideoSender(getVideoSender(), { screenShare, config });
   }
 
   async function removeOutgoingVideo() {
@@ -568,11 +584,11 @@ export function createCallUI(config, api, options = {}) {
       const sourceId = await openScreenPickerDialog();
       if (!sourceId) return;
 
-      const stream = await captureDisplayStream(sourceId);
+      const stream = await captureDisplayStream(sourceId, config);
       const screenTrack = stream.getVideoTracks()[0];
       if (!screenTrack) throw new Error('No screen track');
 
-      await applyScreenTrackConstraints(screenTrack);
+      await applyScreenTrackConstraints(screenTrack, config);
 
       screenStream = stream;
       sharingScreen = true;
@@ -673,14 +689,14 @@ export function createCallUI(config, api, options = {}) {
     try {
       return await navigator.mediaDevices.getUserMedia({
         audio,
-        video: video ? CAMERA_VIDEO_CONSTRAINTS : false,
+        video: video ? getCameraVideoConstraints(config) : false,
       });
     } catch (err) {
       if (!deviceId) throw err;
       console.warn('[call] mic device failed, using default:', err.message);
       return navigator.mediaDevices.getUserMedia({
         audio: true,
-        video: video ? CAMERA_VIDEO_CONSTRAINTS : false,
+        video: video ? getCameraVideoConstraints(config) : false,
       });
     }
   }
@@ -773,7 +789,7 @@ export function createCallUI(config, api, options = {}) {
 
       localStream.getTracks().forEach((tr) => pc.addTrack(tr, localStream));
       const camSender = getVideoSender();
-      if (camSender) void tuneVideoSender(camSender, { screenShare: false });
+      if (camSender) void tuneVideoSender(camSender, { screenShare: false, config });
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -845,7 +861,7 @@ export function createCallUI(config, api, options = {}) {
 
       localStream.getTracks().forEach((tr) => pc.addTrack(tr, localStream));
       const camSender = getVideoSender();
-      if (camSender) void tuneVideoSender(camSender, { screenShare: false });
+      if (camSender) void tuneVideoSender(camSender, { screenShare: false, config });
 
       await setRemoteDescription(offer);
       const answer = await pc.createAnswer();

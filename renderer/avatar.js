@@ -1,3 +1,5 @@
+import { getPeerAvatarDataUrl } from './peer-avatars.js';
+
 const STORAGE_KEY = 'blip_avatar_custom_v1';
 const SEED_KEY = 'blip_avatar_seed_v1';
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
@@ -211,6 +213,12 @@ export function createAvatarElement(blipId, scale = 4, opts = {}) {
       appendCustomImg(wrap, url, scale, blipId);
       return wrap;
     }
+  }
+
+  const peerUrl = getPeerAvatarDataUrl(blipId);
+  if (peerUrl) {
+    appendCustomImg(wrap, peerUrl, scale, blipId);
+    return wrap;
   }
 
   const canvas = document.createElement('canvas');

@@ -1,12 +1,6 @@
 {
-
   "displayName": "BLIP",
-
-  "codename": "Handshake",
-
-  "version": "0.5.7",
-
+  "codename": "Portrait",
+  "version": "0.6.0",
   "githubUrl": "https://github.com/krwg/BLIP"
-
 }
-

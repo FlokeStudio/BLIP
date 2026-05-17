@@ -9,6 +9,36 @@ Release **version numbers** track [`app-metadata.json`](app-metadata.json) (sync
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.6.0] — Portrait
+
+### Added
+
+- **Peer avatars over LAN** — custom profile photos sync to peers; shown in peer list, 1:1 chat, groups, and calls.
+- **Separate group call window** — dedicated frame with min / max / close and title **Group call** / **Групповой звонок**.
+- **Autostart (Windows)** — Settings → System: launch BLIP when you sign in.
+- **Chat search** — Ctrl+F focuses search in the open conversation (EN/RU).
+
+### Changed
+
+- **i18n** — group call badges, host line, handshake tag, and UI chrome fully localized (EN/RU).
+- **Group call roster** — shared state module for main window badges while WebRTC runs in the group-call window.
+
+## [0.5.8] — Handshake
+
+### Added
+
+- **LAN clipboard sync** — Settings → Network: Off / active chat / trusted peers; P2P text up to 32 KB.
+- **Group chat drag & drop** — drop files/images into group chat (inline, up to 768 KB).
+- **Group large files** — chunked P2P to every member (same limit as 1:1 from Settings → Files).
+- **Transfer cancel** — CANCEL in Transfer Hub for outgoing transfers.
+
+### Changed
+
+- **Settings appearance** — theme and animated background use pixel-style dropdowns.
+- **Profile** — quick status presets as dropdown.
+
 ## [0.5.4] — Handshake
 
 ### Added

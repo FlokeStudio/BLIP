@@ -33,13 +33,53 @@ import {
   regenerateAvatar,
 } from './avatar.js';
 import {
+  broadcastAvatarToPeers,
+  handleAvatarSyncMessage,
+  sendAvatarToPeer,
+} from './avatar-sync.js';
+import {
   sounds,
   setSoundPrefs,
   PREVIEW_KEYS,
   SOUND_PACK_IDS,
   MELODY_PACK_IDS,
 } from './audio.js';
-import { sendChatFile, fileToDataUrl, handleFileTransferTcp } from './file-transfer.js';
+import {
+  sendChatFile,
+  fileToDataUrl,
+  handleFileTransferTcp,
+  abortFileTransfer,
+} from './file-transfer.js';
+import {
+  sendGroupChatFile,
+  completeIncomingGroupFile,
+  applyStashedGroupFile,
+} from './group-file-transfer.js';
+import {
+  FILE_LIMIT_GB_OPTIONS,
+  normalizeFileLimitGb,
+  formatFileLimitLabel,
+} from './file-transfer-limits.js';
+import {
+  trackTransferStart,
+  trackTransferProgress,
+  trackTransferEnd,
+  refreshTransferHubI18n,
+} from './file-transfer-hub.js';
+import {
+  STREAM_QUALITY_IDS,
+  normalizeStreamQuality,
+  normalizeFullscreenQuality,
+} from './call-media.js';
+import { buildThemedSelect, fillSettingsDropdown, buildSettingsField } from './settings-ui.js';
+import {
+  startClipboardSync,
+  stopClipboardSync,
+  handleClipboardPush,
+  normalizeClipboardSyncMode,
+  CLIPBOARD_SYNC_MODES,
+  formatClipboardToast,
+} from './clipboard-sync.js';
 import { formatPeerDisplayName } from './peer-labels.js';
 import { openMeshLabelDialog } from './mesh-label-dialog.js';
 import { showAppToast } from './toasts.js';
@@ -64,6 +104,16 @@ import {
   normalizeThemeId,
   normalizeBgId,
 } from './appearance.js';
+
+function restartClipboardSync() {
+  stopClipboardSync();
+  startClipboardSync({
+    getConfig: () => state.config,
+    getPeers: () => state.peers,
+    getActivePeer: () => state.activePeer,
+    sendTcpMessage: (payload) => api.sendTcpMessage(payload),
+  });
+}
 
 let state = {
   config: null,
@@ -209,7 +259,34 @@ function ensureGroupChatView(groupId) {
         const fresh = getGroup(groupId);
         if (fresh) showGroupContextMenu(e, fresh);
       },
-      (gid) => joinGroupCall(gid, api, { skipInvite: true })
+      (gid) => joinGroupCall(gid, api, { skipInvite: true }),
+      async (gid, file, onUiProgress) => {
+        const g = getGroup(gid);
+        if (!g) return;
+        const broadcast = (msg) => sendGroupChatMessage(api, state.config, gid, msg);
+        await sendGroupChatFile(api, state.config, g, file, broadcast, {
+          onPeerStart: (to, transferId) => {
+            trackTransferStart(to, transferId, {
+              name: file.name,
+              size: file.size,
+              direction: 'out',
+              cancellable: true,
+              onCancel: () => void abortFileTransfer(api, state.config, to, transferId),
+            });
+          },
+          onPeerEnd: (to, transferId) => trackTransferEnd(to, transferId),
+          onProgress: (pct, to, transferId) => {
+            onUiProgress?.();
+            trackTransferProgress(to, transferId, pct, {
+              name: file.name,
+              size: file.size,
+              direction: 'out',
+              cancellable: true,
+              onCancel: () => void abortFileTransfer(api, state.config, to, transferId),
+            });
+          },
+        });
+      }
     );
     state.groupChatViews.set(groupId, view);
   }
@@ -269,12 +346,44 @@ function ensureChatView(peerId) {
           add: payload.add,
         }),
       async (to, file, onProgress) => {
-        const result = await sendChatFile(api, state.config, to, file, onProgress);
-        if (result.chunked) {
-          const dataUrl = await fileToDataUrl(file);
-          result.attachment = { ...result.attachment, dataUrl };
+        let tid = createMessageId();
+        trackTransferStart(to, tid, {
+          name: file.name,
+          size: file.size,
+          direction: 'out',
+          cancellable: true,
+          onCancel: () => void abortFileTransfer(api, state.config, to, tid),
+        });
+        try {
+          const result = await sendChatFile(
+            api,
+            state.config,
+            to,
+            file,
+            (pct) => {
+              trackTransferProgress(to, tid, pct, {
+                name: file.name,
+                size: file.size,
+                direction: 'out',
+                cancellable: true,
+                onCancel: () => void abortFileTransfer(api, state.config, to, tid),
+              });
+              onProgress?.(pct);
+            },
+            { transferId: tid }
+          );
+          if (result.transferId) tid = result.transferId;
+          if (result.chunked) {
+            const dataUrl = await fileToDataUrl(file);
+            result.attachment = { ...result.attachment, dataUrl };
+          }
+          return result;
+        } catch (err) {
+          if (err?.message === 'cancelled') throw err;
+          throw err;
+        } finally {
+          trackTransferEnd(to, tid);
         }
-        return result;
       },
       (e, peerId) => showPeerContextMenu(e, peerId, { hideMessage: true })
     );
@@ -483,7 +592,7 @@ function renderPeersView() {
         const hs = document.createElement('span');
         hs.className = 'peer-handshake-badge';
         hs.title = t('peers.handshake_ok');
-        hs.textContent = 'HS';
+        hs.textContent = t('peers.badge_hs');
         name.appendChild(hs);
       } else if (peer.meshLegacy) {
         const leg = document.createElement('span');
@@ -827,6 +936,7 @@ function buildAvatarSettingsSection() {
     refreshPreview();
     removeBtn.disabled = !hasCustomAvatar();
     window.dispatchEvent(new CustomEvent('blip-avatar-changed'));
+    void broadcastAvatarToPeers(api, state.peers);
   });
 
   const removeBtn = document.createElement('button');
@@ -840,6 +950,7 @@ function buildAvatarSettingsSection() {
     refreshPreview();
     removeBtn.disabled = !hasCustomAvatar();
     window.dispatchEvent(new CustomEvent('blip-avatar-changed'));
+    void broadcastAvatarToPeers(api, state.peers);
   });
 
   fileInput.addEventListener('change', async () => {
@@ -852,6 +963,7 @@ function buildAvatarSettingsSection() {
       refreshPreview();
       removeBtn.disabled = false;
       window.dispatchEvent(new CustomEvent('blip-avatar-changed'));
+      void broadcastAvatarToPeers(api, state.peers);
     } catch (e) {
       const msg = e?.message;
       const key =
@@ -877,6 +989,49 @@ function buildAvatarSettingsSection() {
   hint.className = 'settings-motion-hint';
   hint.dataset.i18n = 'settings.avatar_hint';
   hint.textContent = t('settings.avatar_hint');
+  block.appendChild(hint);
+
+  return block;
+}
+
+function buildLaunchAtLoginSection() {
+  if (typeof window === 'undefined' || window.blip?.platform !== 'win32') {
+    return null;
+  }
+
+  const block = document.createElement('div');
+  block.className = 'settings-tray-wrap';
+
+  const h = document.createElement('h3');
+  h.className = 'section-subtitle';
+  h.dataset.i18n = 'settings.launch_at_login';
+  h.textContent = t('settings.launch_at_login');
+  block.appendChild(h);
+
+  const row = document.createElement('label');
+  row.className = 'settings-tray-toggle-row';
+
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = !!state.config.launchAtLogin;
+
+  const span = document.createElement('span');
+  span.dataset.i18n = 'settings.launch_at_login';
+  span.textContent = t('settings.launch_at_login');
+
+  row.appendChild(cb);
+  row.appendChild(span);
+
+  cb.addEventListener('change', async () => {
+    state.config = await api.saveConfig({ launchAtLogin: cb.checked });
+  });
+
+  block.appendChild(row);
+
+  const hint = document.createElement('p');
+  hint.className = 'settings-motion-hint';
+  hint.dataset.i18n = 'settings.launch_at_login_hint';
+  hint.textContent = t('settings.launch_at_login_hint');
   block.appendChild(hint);
 
   return block;
@@ -931,71 +1086,24 @@ function buildAppearanceSection() {
   const curTheme = normalizeThemeId(state.config.themeId);
   const curBg = normalizeBgId(state.config.animatedBgId);
 
-  const lightLbl = document.createElement('span');
-  lightLbl.className = 'settings-sub-label';
-  lightLbl.dataset.i18n = 'settings.theme_light';
-  lightLbl.textContent = t('settings.theme_light');
-  block.appendChild(lightLbl);
+  const themeOpts = [...THEME_GROUPS.light, ...THEME_GROUPS.dark].map((id) => ({
+    value: id,
+    label: labelTheme(id),
+  }));
+  const themeSelect = buildThemedSelect();
+  fillSettingsDropdown(themeSelect, themeOpts, curTheme, async (id) => {
+    state.config = await api.saveConfig({ themeId: id });
+    applyAppearance(state.config);
+  });
+  block.appendChild(buildSettingsField('settings.appearance_theme', themeSelect));
 
-  const rowLight = document.createElement('div');
-  rowLight.className = 'settings-appearance-grid';
-  for (const id of THEME_GROUPS.light) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `btn btn-lang settings-swatch${curTheme === id ? ' selected' : ''}`;
-    btn.textContent = labelTheme(id);
-    btn.addEventListener('click', async () => {
-      state.config = await api.saveConfig({ themeId: id });
-      applyAppearance(state.config);
-      renderView('settings');
-    });
-    rowLight.appendChild(btn);
-  }
-  block.appendChild(rowLight);
-
-  const darkLbl = document.createElement('span');
-  darkLbl.className = 'settings-sub-label';
-  darkLbl.dataset.i18n = 'settings.theme_dark';
-  darkLbl.textContent = t('settings.theme_dark');
-  block.appendChild(darkLbl);
-
-  const rowDark = document.createElement('div');
-  rowDark.className = 'settings-appearance-grid';
-  for (const id of THEME_GROUPS.dark) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `btn btn-lang settings-swatch${curTheme === id ? ' selected' : ''}`;
-    btn.textContent = labelTheme(id);
-    btn.addEventListener('click', async () => {
-      state.config = await api.saveConfig({ themeId: id });
-      applyAppearance(state.config);
-      renderView('settings');
-    });
-    rowDark.appendChild(btn);
-  }
-  block.appendChild(rowDark);
-
-  const bgLbl = document.createElement('span');
-  bgLbl.className = 'settings-sub-label';
-  bgLbl.dataset.i18n = 'settings.bg_title';
-  bgLbl.textContent = t('settings.bg_title');
-  block.appendChild(bgLbl);
-
-  const rowBg = document.createElement('div');
-  rowBg.className = 'settings-appearance-grid settings-bg-grid';
-  for (const { id } of BG_META) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `btn btn-lang settings-swatch${curBg === id ? ' selected' : ''}`;
-    btn.textContent = labelBg(id);
-    btn.addEventListener('click', async () => {
-      state.config = await api.saveConfig({ animatedBgId: id });
-      applyAppearance(state.config);
-      renderView('settings');
-    });
-    rowBg.appendChild(btn);
-  }
-  block.appendChild(rowBg);
+  const bgOpts = BG_META.map(({ id }) => ({ value: id, label: labelBg(id) }));
+  const bgSelect = buildThemedSelect();
+  fillSettingsDropdown(bgSelect, bgOpts, curBg, async (id) => {
+    state.config = await api.saveConfig({ animatedBgId: id });
+    applyAppearance(state.config);
+  });
+  block.appendChild(buildSettingsField('settings.bg_title', bgSelect));
 
   const motion = document.createElement('p');
   motion.className = 'settings-motion-hint';
@@ -1207,6 +1315,7 @@ function getSettingsSectionIds() {
     'sound',
     'shortcuts',
     'call',
+    'transfer',
     'appearance',
     'network',
     'system',
@@ -1275,35 +1384,24 @@ function buildSettingsProfilePanel() {
     await api.saveConfig({ displayName: name });
   });
 
-  const presenceLabel = document.createElement('label');
-  presenceLabel.dataset.i18n = 'settings.presence';
-  presenceLabel.textContent = t('settings.presence');
-  const presenceRow = document.createElement('div');
-  presenceRow.className = 'presence-row';
-  const currentPresence = state.config.presenceStatus || 'online';
-  [
-    { id: 'online', key: 'settings.presence_online' },
-    { id: 'away', key: 'settings.presence_away' },
-    { id: 'busy', key: 'settings.presence_busy' },
-  ].forEach(({ id, key }) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `btn btn-lang ${currentPresence === id ? 'selected' : ''}`;
-    btn.dataset.i18n = key;
-    btn.textContent = t(key);
-    btn.addEventListener('click', async () => {
+  const presenceSelect = buildThemedSelect();
+  fillSettingsDropdown(
+    presenceSelect,
+    [
+      { id: 'online', key: 'settings.presence_online' },
+      { id: 'away', key: 'settings.presence_away' },
+      { id: 'busy', key: 'settings.presence_busy' },
+    ].map(({ id, key }) => ({ value: id, label: t(key) })),
+    state.config.presenceStatus || 'online',
+    async (id) => {
       state.config.presenceStatus = id;
       await api.saveConfig({ presenceStatus: id });
-      presenceRow.querySelectorAll('.btn').forEach((b) => b.classList.remove('selected'));
-      btn.classList.add('selected');
-    });
-    presenceRow.appendChild(btn);
-  });
+    }
+  );
 
   frag.appendChild(nameLabel);
   frag.appendChild(nameInput);
-  frag.appendChild(presenceLabel);
-  frag.appendChild(presenceRow);
+  frag.appendChild(buildSettingsField('settings.presence', presenceSelect));
 
   const statusLabel = document.createElement('label');
   statusLabel.dataset.i18n = 'settings.status_text';
@@ -1316,24 +1414,19 @@ function buildSettingsProfilePanel() {
   statusInput.dataset.i18nPlaceholder = 'settings.status_placeholder';
   statusInput.value = state.config.presenceText || '';
 
-  const statusPresets = document.createElement('div');
-  statusPresets.className = 'presence-row settings-status-presets';
-  [
-    { text: '', key: 'settings.status_clear' },
-    { text: 'In game', key: 'settings.status_game' },
-    { text: 'AFK', key: 'settings.status_afk' },
-    { text: 'Working', key: 'settings.status_work' },
-  ].forEach(({ text, key }) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn btn-lang';
-    btn.dataset.i18n = key;
-    btn.textContent = t(key);
-    btn.addEventListener('click', async () => {
-      statusInput.value = text;
-      state.config = await api.saveConfig({ presenceText: text });
-    });
-    statusPresets.appendChild(btn);
+  const presetSelect = buildThemedSelect();
+  const presetOpts = [
+    { value: '', label: t('settings.status_clear') },
+    { value: 'In game', label: t('settings.status_game') },
+    { value: 'AFK', label: t('settings.status_afk') },
+    { value: 'Working', label: t('settings.status_work') },
+  ];
+  const curPreset = presetOpts.some((o) => o.value === (state.config.presenceText || ''))
+    ? state.config.presenceText || ''
+    : '';
+  fillSettingsDropdown(presetSelect, presetOpts, curPreset, async (text) => {
+    statusInput.value = text;
+    state.config = await api.saveConfig({ presenceText: text });
   });
 
   statusInput.addEventListener('change', async () => {
@@ -1344,7 +1437,7 @@ function buildSettingsProfilePanel() {
 
   frag.appendChild(statusLabel);
   frag.appendChild(statusInput);
-  frag.appendChild(statusPresets);
+  frag.appendChild(buildSettingsField('settings.status_presets', presetSelect));
   frag.appendChild(buildAvatarSettingsSection());
   frag.appendChild(idRow);
   return frag;
@@ -1360,29 +1453,25 @@ function buildSettingsLanguagePanel() {
   h.textContent = t('settings.section_language');
   frag.appendChild(h);
 
-  const langLabel = document.createElement('label');
-  langLabel.dataset.i18n = 'settings.language';
-  langLabel.textContent = t('settings.language');
-  const langRow = document.createElement('div');
-  langRow.className = 'lang-row';
-  ['en', 'ru'].forEach((lang) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `btn btn-lang ${state.config.language === lang || getLang() === lang ? 'selected' : ''}`;
-    btn.textContent = lang.toUpperCase();
-    btn.addEventListener('click', async () => {
+  const langSelect = buildThemedSelect();
+  fillSettingsDropdown(
+    langSelect,
+    [
+      { value: 'en', label: 'English' },
+      { value: 'ru', label: 'Русский' },
+    ],
+    state.config.language || getLang() || 'en',
+    async (lang) => {
       setLang(lang);
       state.config.language = lang;
       await api.saveConfig({ language: lang });
       applyLangChange();
       state.settingsSection = 'language';
       renderView('settings');
-    });
-    langRow.appendChild(btn);
-  });
+    }
+  );
 
-  frag.appendChild(langLabel);
-  frag.appendChild(langRow);
+  frag.appendChild(buildSettingsField('settings.language', langSelect));
   return frag;
 }
 
@@ -1621,57 +1710,33 @@ function buildSettingsSoundPanel() {
   volRow.appendChild(volRange);
   volRow.appendChild(volVal);
 
-  const soundPackLabel = document.createElement('label');
-  soundPackLabel.dataset.i18n = 'settings.sound_pack';
-  soundPackLabel.textContent = t('settings.sound_pack');
-  const soundPackRow = document.createElement('div');
-  soundPackRow.className = 'presence-row settings-sound-pack-row';
-  const currentSoundPack = SOUND_PACK_IDS.includes(state.config.uiSoundPack)
-    ? state.config.uiSoundPack
-    : 'signal';
-  [
-    { id: 'signal', key: 'settings.sound_pack_signal' },
-    { id: 'pulse', key: 'settings.sound_pack_pulse' },
-  ].forEach(({ id, key }) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `btn btn-lang ${currentSoundPack === id ? 'selected' : ''}`;
-    btn.dataset.i18n = key;
-    btn.textContent = t(key);
-    btn.addEventListener('click', async () => {
+  const soundPackSelect = buildThemedSelect();
+  fillSettingsDropdown(
+    soundPackSelect,
+    [
+      { value: 'signal', label: t('settings.sound_pack_signal') },
+      { value: 'pulse', label: t('settings.sound_pack_pulse') },
+    ],
+    SOUND_PACK_IDS.includes(state.config.uiSoundPack) ? state.config.uiSoundPack : 'signal',
+    async (id) => {
       state.config = await api.saveConfig({ uiSoundPack: id });
       applySoundPrefsFromConfig(state.config);
-      soundPackRow.querySelectorAll('.btn').forEach((b) => b.classList.remove('selected'));
-      btn.classList.add('selected');
-    });
-    soundPackRow.appendChild(btn);
-  });
+    }
+  );
 
-  const melodyPackLabel = document.createElement('label');
-  melodyPackLabel.dataset.i18n = 'settings.melody_pack';
-  melodyPackLabel.textContent = t('settings.melody_pack');
-  const melodyPackRow = document.createElement('div');
-  melodyPackRow.className = 'presence-row settings-sound-pack-row';
-  const currentMelodyPack = MELODY_PACK_IDS.includes(state.config.uiMelodyPack)
-    ? state.config.uiMelodyPack
-    : 'mesh';
-  [
-    { id: 'mesh', key: 'settings.melody_pack_mesh' },
-    { id: 'grid', key: 'settings.melody_pack_grid' },
-  ].forEach(({ id, key }) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `btn btn-lang ${currentMelodyPack === id ? 'selected' : ''}`;
-    btn.dataset.i18n = key;
-    btn.textContent = t(key);
-    btn.addEventListener('click', async () => {
+  const melodyPackSelect = buildThemedSelect();
+  fillSettingsDropdown(
+    melodyPackSelect,
+    [
+      { value: 'mesh', label: t('settings.melody_pack_mesh') },
+      { value: 'grid', label: t('settings.melody_pack_grid') },
+    ],
+    MELODY_PACK_IDS.includes(state.config.uiMelodyPack) ? state.config.uiMelodyPack : 'mesh',
+    async (id) => {
       state.config = await api.saveConfig({ uiMelodyPack: id });
       applySoundPrefsFromConfig(state.config);
-      melodyPackRow.querySelectorAll('.btn').forEach((b) => b.classList.remove('selected'));
-      btn.classList.add('selected');
-    });
-    melodyPackRow.appendChild(btn);
-  });
+    }
+  );
 
   const previewTitle = document.createElement('h3');
   previewTitle.className = 'section-subtitle';
@@ -1718,10 +1783,8 @@ function buildSettingsSoundPanel() {
   frag.appendChild(enableLabel);
   frag.appendChild(volLabel);
   frag.appendChild(volRow);
-  frag.appendChild(soundPackLabel);
-  frag.appendChild(soundPackRow);
-  frag.appendChild(melodyPackLabel);
-  frag.appendChild(melodyPackRow);
+  frag.appendChild(buildSettingsField('settings.sound_pack', soundPackSelect));
+  frag.appendChild(buildSettingsField('settings.melody_pack', melodyPackSelect));
   frag.appendChild(previewTitle);
   frag.appendChild(previewGrid);
   return frag;
@@ -1742,12 +1805,6 @@ async function listMediaDevices(kind) {
   return devices.filter((d) => d.kind === kind);
 }
 
-function buildThemedSelect(className = 'blip-select') {
-  const sel = document.createElement('select');
-  sel.className = className;
-  return sel;
-}
-
 function fillDeviceSelect(select, devices, currentId, defaultLabelKey, deviceLabelKey) {
   while (select.options.length > 1) select.remove(1);
   for (const d of devices) {
@@ -1759,6 +1816,39 @@ function fillDeviceSelect(select, devices, currentId, defaultLabelKey, deviceLab
   }
   const ok = [...select.options].some((o) => o.value === currentId);
   select.value = ok ? currentId : '';
+}
+
+function buildSettingsTransferPanel() {
+  const frag = document.createElement('div');
+  frag.className = 'settings-panel';
+
+  const h = document.createElement('h2');
+  h.className = 'settings-panel-title';
+  h.dataset.i18n = 'settings.section_transfer';
+  h.textContent = t('settings.section_transfer');
+  frag.appendChild(h);
+
+  const hint = document.createElement('p');
+  hint.className = 'hint';
+  hint.dataset.i18n = 'settings.transfer_hint';
+  hint.textContent = t('settings.transfer_hint');
+  frag.appendChild(hint);
+
+  const limitSelect = buildThemedSelect();
+  const limitOpts = FILE_LIMIT_GB_OPTIONS.map((gb) => ({
+    value: String(gb),
+    label: formatFileLimitLabel(gb, t),
+  }));
+  fillSettingsDropdown(
+    limitSelect,
+    limitOpts,
+    String(normalizeFileLimitGb(state.config.maxFileTransferGb)),
+    async (val) => {
+      state.config = await api.saveConfig({ maxFileTransferGb: Number(val) });
+    }
+  );
+  frag.appendChild(buildSettingsField('settings.file_limit', limitSelect));
+  return frag;
 }
 
 function buildSettingsCallPanel() {
@@ -1777,9 +1867,31 @@ function buildSettingsCallPanel() {
   hint.textContent = t('settings.call_hint');
   frag.appendChild(hint);
 
-  const micLabel = document.createElement('label');
-  micLabel.dataset.i18n = 'settings.call_mic';
-  micLabel.textContent = t('settings.call_mic');
+  const qualitySelect = buildThemedSelect('blip-select settings-call-select');
+  const qOpts = STREAM_QUALITY_IDS.map((id) => ({
+    value: id,
+    label: t(`settings.stream_quality_${id}`),
+  }));
+  fillSettingsDropdown(
+    qualitySelect,
+    qOpts,
+    normalizeStreamQuality(state.config.streamQuality),
+    async (val) => {
+      state.config = await api.saveConfig({ streamQuality: val });
+    }
+  );
+  frag.appendChild(buildSettingsField('settings.stream_quality', qualitySelect));
+
+  const fsSelect = buildThemedSelect('blip-select settings-call-select');
+  fillSettingsDropdown(
+    fsSelect,
+    qOpts,
+    normalizeFullscreenQuality(state.config),
+    async (val) => {
+      state.config = await api.saveConfig({ fullscreenQuality: val });
+    }
+  );
+  frag.appendChild(buildSettingsField('settings.fullscreen_quality', fsSelect));
 
   const micSelect = buildThemedSelect('blip-select settings-call-select');
   const micDefault = document.createElement('option');
@@ -1787,11 +1899,6 @@ function buildSettingsCallPanel() {
   micDefault.dataset.i18n = 'settings.call_mic_default';
   micDefault.textContent = t('settings.call_mic_default');
   micSelect.appendChild(micDefault);
-
-  const outLabel = document.createElement('label');
-  outLabel.className = 'settings-call-field-label';
-  outLabel.dataset.i18n = 'settings.call_speaker';
-  outLabel.textContent = t('settings.call_speaker');
 
   const outSelect = buildThemedSelect('blip-select settings-call-select');
   const outDefault = document.createElement('option');
@@ -1931,10 +2038,8 @@ function buildSettingsCallPanel() {
   micTestWrap.appendChild(micTestActions);
   micTestWrap.appendChild(micMeter);
 
-  frag.appendChild(micLabel);
-  frag.appendChild(micSelect);
-  frag.appendChild(outLabel);
-  frag.appendChild(outSelect);
+  frag.appendChild(buildSettingsField('settings.call_mic', micSelect));
+  frag.appendChild(buildSettingsField('settings.call_speaker', outSelect));
   frag.appendChild(micTestWrap);
   return frag;
 }
@@ -1948,6 +2053,28 @@ function buildSettingsNetworkPanel() {
   h.dataset.i18n = 'settings.section_network';
   h.textContent = t('settings.section_network');
   frag.appendChild(h);
+
+  const clipOpts = CLIPBOARD_SYNC_MODES.map((id) => ({
+    value: id,
+    label: t(`clipboard.mode_${id}`),
+  }));
+  const clipSelect = buildThemedSelect();
+  fillSettingsDropdown(
+    clipSelect,
+    clipOpts,
+    normalizeClipboardSyncMode(state.config.clipboardSyncMode),
+    async (mode) => {
+      state.config = await api.saveConfig({ clipboardSyncMode: mode });
+      restartClipboardSync();
+    }
+  );
+  frag.appendChild(buildSettingsField('clipboard.mode', clipSelect));
+
+  const clipHint = document.createElement('p');
+  clipHint.className = 'settings-motion-hint';
+  clipHint.dataset.i18n = 'clipboard.hint';
+  clipHint.textContent = t('clipboard.hint');
+  frag.appendChild(clipHint);
 
   const actions = document.createElement('div');
   actions.className = 'settings-network-actions';
@@ -2294,7 +2421,12 @@ function buildSettingsSystemPanel() {
   const tray = buildCloseToTraySection();
   if (tray) {
     frag.appendChild(tray);
-  } else {
+  }
+  const autostart = buildLaunchAtLoginSection();
+  if (autostart) {
+    frag.appendChild(autostart);
+  }
+  if (!tray && !autostart) {
     const p = document.createElement('p');
     p.className = 'hint';
     p.dataset.i18n = 'settings.system_na';
@@ -2455,7 +2587,8 @@ function buildSettingsUpdatesPanel() {
       if (r.prerelease) {
         const pre = document.createElement('span');
         pre.className = 'settings-release-pre';
-        pre.textContent = 'pre';
+        pre.dataset.i18n = 'settings.release_pre';
+        pre.textContent = t('settings.release_pre');
         head.appendChild(pre);
       }
       head.appendChild(date);
@@ -2551,6 +2684,8 @@ function renderSettingsMainPanel() {
       return buildSettingsShortcutsPanel();
     case 'call':
       return buildSettingsCallPanel();
+    case 'transfer':
+      return buildSettingsTransferPanel();
     case 'appearance':
       return buildAppearancePanelWithTitle();
     case 'network':
@@ -2811,14 +2946,14 @@ function renderChatHubView() {
     }
     const badge = document.createElement('span');
     badge.className = 'chat-hub-group-tag';
-    badge.textContent = 'GRP';
+    badge.textContent = t('group.badge_grp');
     item.appendChild(badge);
     const voice = getOngoingGroupCall(group.id);
     if (voice.active && voice.count > 0) {
       const live = document.createElement('span');
       live.className = 'chat-hub-voice-live';
       live.title = t('group.call_ongoing_hub');
-      live.textContent = 'VOICE';
+      live.textContent = t('group.badge_voice');
       item.appendChild(live);
     }
     item.appendChild(info);
@@ -3047,6 +3182,7 @@ export function initUI(config, blipApi) {
   /* Calls use a separate BrowserWindow — see main/index.js + call-window.html */
 
   onLangChange(() => {
+    refreshTransferHubI18n();
     applyI18n(rootEl);
     if (state.config.blipId) {
       renderView(state.view || 'dial');
@@ -3067,8 +3203,11 @@ export function initUI(config, blipApi) {
     window.blip.onConfigUpdated((cfg) => {
       state.config = cfg;
       applyTrustFromConfig(cfg);
+      restartClipboardSync();
     });
   }
+
+  restartClipboardSync();
 
   if (typeof window.blip.onUpdateStatus === 'function') {
     window.blip.onUpdateStatus((payload) => {
@@ -3138,6 +3277,23 @@ export function initUI(config, blipApi) {
     }
   });
 
+  window.addEventListener('blip-peer-avatar-changed', () => {
+    if (!mainContent?.isConnected) return;
+    if (state.view === 'peers') renderView('peers');
+    else if (state.view === 'chat' && !state.activePeer && !state.activeGroup) renderView('chat');
+    if (state.view === 'chat' && state.activePeer != null) {
+      state.chatViews.get(state.activePeer)?.refreshHeaderAvatar?.();
+    }
+    if (state.view === 'chat' && state.activeGroup) {
+      const g = getGroup(state.activeGroup);
+      if (g) ensureGroupChatView(state.activeGroup)?.updateGroup?.(g);
+    }
+  });
+
+  window.blip?.onGroupCallActive?.(() => {
+    if (state.view === 'chat' && !state.activePeer && mainContent) renderView('chat');
+  });
+
   render();
 }
 
@@ -3151,6 +3307,7 @@ export function updatePeers({ peers, occupiedIds }) {
     if (p.online && !prevOnline.has(p.blipId)) {
       logPeerEvent(p.blipId, 'online');
       if (!state.config?.doNotDisturb) sounds.peerOnline();
+      void sendAvatarToPeer(api, p.blipId);
     } else if (!p.online && prevOnline.has(p.blipId)) {
       logPeerEvent(p.blipId, 'offline');
       if (!state.config?.doNotDisturb) sounds.peerOffline();
@@ -3196,12 +3353,55 @@ function handleTypingTcp(msg) {
 }
 
 export function handleTcpMessage(msg) {
+  if (msg.type === 'avatar-sync') {
+    if (isBlocked(Number(msg.from))) return;
+    handleAvatarSyncMessage(msg);
+    return;
+  }
+
+  if (msg.type === 'clipboard-push') {
+    if (isBlocked(Number(msg.from))) return;
+    void handleClipboardPush(msg, {
+      getConfig: () => state.config,
+      getActivePeer: () => state.activePeer,
+      onApplied: (from) => {
+        showAppToast({
+          title: formatClipboardToast(from),
+          durationMs: 3200,
+        });
+      },
+    });
+    return;
+  }
+
   if (msg.type?.startsWith?.('file-')) {
     if (isBlocked(Number(msg.from))) return;
+    if (msg.type === 'file-offer') {
+      trackTransferStart(Number(msg.from), msg.transferId, {
+        name: msg.name,
+        size: msg.size,
+        direction: 'in',
+      });
+    }
     handleFileTransferTcp(msg, {
       config: state.config,
-      onProgress: () => {},
+      onProgress: (peerId, transferId, pct) => {
+        trackTransferProgress(peerId, transferId, pct, { direction: 'in' });
+      },
       onComplete: (peerId, payload) => {
+        if (payload?.transferId) trackTransferEnd(peerId, payload.transferId);
+        if (payload.groupId && payload.msgId) {
+          completeIncomingGroupFile(payload.groupId, payload.msgId, payload.attachment);
+          state.groupChatViews.get(payload.groupId)?.renderMessages?.();
+          if (state.view === 'chat' && state.activeGroup !== payload.groupId) {
+            unreadByGroup.set(
+              payload.groupId,
+              (unreadByGroup.get(payload.groupId) || 0) + 1
+            );
+            if (!state.activePeer && !state.activeGroup) renderView('chat');
+          }
+          return;
+        }
         const incoming = {
           type: 'message',
           from: peerId,
@@ -3212,6 +3412,9 @@ export function handleTcpMessage(msg) {
           attachment: payload.attachment,
         };
         routePeerMessage(incoming);
+      },
+      onAbort: (peerId, transferId) => {
+        trackTransferEnd(peerId, transferId);
       },
     });
     return;

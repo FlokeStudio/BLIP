@@ -11,6 +11,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'renderer/index.html'),
         call: resolve(__dirname, 'renderer/call-window.html'),
+        groupCall: resolve(__dirname, 'renderer/group-call-window.html'),
       },
     },
   },

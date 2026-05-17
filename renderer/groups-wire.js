@@ -17,6 +17,7 @@ import {
   clearDeclinedInvite,
   purgeGroupsFor,
 } from './groups.js';
+import { applyStashedGroupFile } from './group-file-transfer.js';
 import { showAppToast } from './toasts.js';
 import { sounds } from './audio.js';
 import { openConfirmDialog } from './confirm-dialog.js';
@@ -24,12 +25,11 @@ import { createMessageId } from './message-id.js';
 import {
   joinGroupCall,
   leaveGroupCall,
-  handleGroupCallSignal,
   handleGroupCallStart,
   handleGroupCallEnd,
   handleGroupCallState,
   isInGroupCall,
-} from './group-call.js';
+} from './group-call-client.js';
 
 function onlineMemberIds(statePeers) {
   return new Set(
@@ -348,6 +348,10 @@ export async function handleGroupTcpMessage(msg, ctx) {
     };
 
     deliverGroupMessage(msg.groupId, incoming, ctx, { bumpUnread: true });
+    if (incoming.attachment?.transferId) {
+      applyStashedGroupFile(msg.groupId, incoming.id);
+      getGroupChatView(msg.groupId)?.renderMessages?.();
+    }
     return true;
   }
 
@@ -393,11 +397,6 @@ export async function handleGroupTcpMessage(msg, ctx) {
     return true;
   }
 
-  if (type === 'group-call-signal') {
-    await handleGroupCallSignal(msg, callApi);
-    return true;
-  }
-
   if (type === 'group-call-state') {
     await handleGroupCallState(msg, callApi);
     return true;
@@ -422,4 +421,4 @@ export {
   leaveGroupCall,
   getOngoingGroupCall,
   getActiveGroupCallId,
-} from './group-call.js';
+} from './group-call-client.js';

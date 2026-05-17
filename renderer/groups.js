@@ -196,6 +196,21 @@ export function addGroupMessage(groupId, msg) {
   return true;
 }
 
+/** Patch attachment / flags on an existing group message. */
+export function updateGroupMessageAttachment(groupId, msgId, patch) {
+  const g = getGroup(groupId);
+  if (!g?.messages) return false;
+  const m = g.messages.find((x) => x.id === msgId);
+  if (!m) return false;
+  if (!m.attachment) m.attachment = { kind: 'file' };
+  Object.assign(m.attachment, patch);
+  if (patch.pending === false) delete m.attachment.progress;
+  g.updatedAt = Date.now();
+  persist();
+  window.dispatchEvent(new CustomEvent('blip-groups-changed', { detail: { groupId } }));
+  return true;
+}
+
 export function groupDisplayName(group) {
   if (group.name) return group.name;
   const ids = (group.members || []).slice(0, 4).join(',');

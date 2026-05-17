@@ -10,9 +10,11 @@ import {
   INLINE_FILE_BYTES,
 } from './chat-attachments.js';
 import { formatFileSize } from './file-transfer.js';
+import { getMaxFileBytes } from './file-transfer-limits.js';
 import { createMessageId } from './message-id.js';
 import { addGroupMessage, getGroupMessages, groupDisplayName, amHost } from './groups.js';
-import { getOngoingGroupCall, isInGroupCall, getActiveGroupCallId } from './group-call.js';
+import { getOngoingGroupCall } from './group-call-roster.js';
+import { isInGroupCall, getActiveGroupCallId } from './group-call-client.js';
 
 function formatChatTime(ts) {
   try {
@@ -40,11 +42,47 @@ function appendFileCard(block, attachment) {
     dl.download = attachment.name || 'download';
     dl.textContent = t('chat.file_download');
     card.appendChild(dl);
+  } else if (attachment.pending) {
+    const pct = Math.min(100, Math.max(0, Number(attachment.progress) || 0));
+    const prog = document.createElement('div');
+    prog.className = 'chat-file-progress';
+    const track = document.createElement('div');
+    track.className = 'chat-file-progress-track';
+    const fill = document.createElement('div');
+    fill.className = 'chat-file-progress-fill';
+    fill.style.width = `${pct}%`;
+    track.appendChild(fill);
+    prog.appendChild(track);
+    const pendingLbl = document.createElement('span');
+    pendingLbl.className = 'chat-file-pending';
+    pendingLbl.textContent = t('chat.file_sending').replace('{pct}', String(pct));
+    prog.appendChild(pendingLbl);
+    card.appendChild(prog);
+  } else if (attachment.cancelled) {
+    const cancelledLbl = document.createElement('span');
+    cancelledLbl.className = 'chat-file-pending';
+    cancelledLbl.dataset.i18n = 'chat.file_cancelled';
+    cancelledLbl.textContent = t('chat.file_cancelled');
+    card.appendChild(cancelledLbl);
   }
   block.appendChild(card);
 }
 
-export function createGroupChatView(group, config, onSend, onBack, onGroupCall, onGroupMenu, onJoinOngoingCall) {
+function formatGroupFileLimit(config) {
+  const gb = getMaxFileBytes(config) / (1024 * 1024 * 1024);
+  return `${gb} GB`;
+}
+
+export function createGroupChatView(
+  group,
+  config,
+  onSend,
+  onBack,
+  onGroupCall,
+  onGroupMenu,
+  onJoinOngoingCall,
+  onSendFile
+) {
   const wrap = document.createElement('div');
   wrap.className = 'chat-view group-chat-view';
 
@@ -166,6 +204,23 @@ export function createGroupChatView(group, config, onSend, onBack, onGroupCall, 
 
   async function sendAttachment(file) {
     if (!file) return;
+    if (!isImageFile(file) && file.size > INLINE_FILE_BYTES && onSendFile) {
+      try {
+        await onSendFile(group.id, file, () => renderMessages());
+      } catch (err) {
+        if (err?.message === 'cancelled') return;
+        const key =
+          err?.message === 'file_too_big'
+            ? 'chat.file_too_big_dynamic'
+            : 'chat.attach_failed';
+        alert(
+          err?.message === 'file_too_big'
+            ? t(key).replace('{limit}', formatGroupFileLimit(config))
+            : t('chat.attach_failed')
+        );
+      }
+      return;
+    }
     try {
       let attachment;
       let text;
@@ -173,12 +228,8 @@ export function createGroupChatView(group, config, onSend, onBack, onGroupCall, 
         attachment = await encodeChatImageAttachment(file);
         text = t('chat.image_sent');
       } else {
-        if (file.size > INLINE_FILE_BYTES) {
-          alert(t('chat.group_file_limit'));
-          return;
-        }
-        validateChatFile(file);
-        attachment = await encodeInlineFileAttachment(file);
+        validateChatFile(file, config);
+        attachment = await encodeInlineFileAttachment(file, config);
         text = t('chat.file_sent');
       }
       await publish({
@@ -191,10 +242,14 @@ export function createGroupChatView(group, config, onSend, onBack, onGroupCall, 
       });
     } catch (err) {
       const key =
-        err?.message === 'file_too_big' || err?.message === 'use_chunked'
-          ? 'chat.group_file_limit'
+        err?.message === 'file_too_big'
+          ? 'chat.file_too_big_dynamic'
           : 'chat.attach_failed';
-      alert(t(key));
+      alert(
+        err?.message === 'file_too_big'
+          ? t(key).replace('{limit}', formatGroupFileLimit(config))
+          : t('chat.attach_failed')
+      );
     }
   }
 
@@ -236,12 +291,64 @@ export function createGroupChatView(group, config, onSend, onBack, onGroupCall, 
   const onCallState = (ev) => {
     if (ev.detail?.groupId === group.id) refreshOngoingBar();
   };
+  const onGroupsChanged = (ev) => {
+    if (ev.detail?.groupId === group.id) renderMessages();
+  };
   window.addEventListener('blip-group-call-state', onCallState);
+  window.addEventListener('blip-groups-changed', onGroupsChanged);
   refreshOngoingBar();
+
+  let dragDepth = 0;
+  const dropOverlay = document.createElement('div');
+  dropOverlay.className = 'chat-drop-overlay hidden';
+  dropOverlay.textContent = t('chat.drop_hint');
+  dropOverlay.dataset.i18n = 'chat.drop_hint';
+
+  function setDropActive(on) {
+    dropOverlay.classList.toggle('hidden', !on);
+    wrap.classList.toggle('chat-view--drag', on);
+  }
+
+  function hasDropFiles(dt) {
+    return !!(dt?.files?.length);
+  }
+
+  function onDragEnter(e) {
+    e.preventDefault();
+    dragDepth += 1;
+    if (hasDropFiles(e.dataTransfer)) setDropActive(true);
+  }
+
+  function onDragLeave(e) {
+    e.preventDefault();
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) setDropActive(false);
+  }
+
+  function onDragOver(e) {
+    e.preventDefault();
+    if (hasDropFiles(e.dataTransfer)) e.dataTransfer.dropEffect = 'copy';
+  }
+
+  async function onDrop(e) {
+    e.preventDefault();
+    dragDepth = 0;
+    setDropActive(false);
+    const files = [...(e.dataTransfer?.files || [])];
+    for (const file of files) {
+      await sendAttachment(file);
+    }
+  }
+
+  wrap.addEventListener('dragenter', onDragEnter);
+  wrap.addEventListener('dragleave', onDragLeave);
+  wrap.addEventListener('dragover', onDragOver);
+  wrap.addEventListener('drop', onDrop);
 
   wrap.appendChild(header);
   wrap.appendChild(ongoingBar);
   wrap.appendChild(messagesEl);
+  wrap.appendChild(dropOverlay);
   wrap.appendChild(inputRow);
 
   function renderMessages() {
@@ -311,6 +418,7 @@ export function createGroupChatView(group, config, onSend, onBack, onGroupCall, 
     refreshOngoingCall: refreshOngoingBar,
     destroy() {
       window.removeEventListener('blip-group-call-state', onCallState);
+      window.removeEventListener('blip-groups-changed', onGroupsChanged);
     },
   };
 }

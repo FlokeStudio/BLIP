@@ -43,11 +43,16 @@
       max-width: none !important;
       max-height: none !important;
     }
-    #call-shell.call-shell--video-fs .call-video--stage {
-      width: 100% !important;
-      height: 100% !important;
-      max-width: none !important;
-      max-height: none !important;
+    #call-shell.call-shell--video-fs .call-video-wrap--fs-sized {
+      display: flex !important;
+      align-items: center;
+      justify-content: center;
+    }
+    #call-shell.call-shell--video-fs .call-video-wrap--fs-sized .call-video--stage {
+      width: var(--call-fs-w, 100%) !important;
+      height: var(--call-fs-h, auto) !important;
+      max-width: min(var(--call-fs-w, 100vw), 100vw) !important;
+      max-height: min(var(--call-fs-h, 100vh), 100vh) !important;
       object-fit: contain;
     }
     .call-window-titlebar {
