@@ -1,6 +1,6 @@
 {
   "name": "blip",
-  "version": "0.7.6",
+  "version": "0.7.6-beta.1",
   "description": "P2P messenger for local networks — no cloud, no servers",
   "author": "krwg",
   "repository": {
@@ -41,6 +41,7 @@
   },
   "dependencies": {
     "electron-updater": "^6.8.3",
+    "jspdf": "^2.5.2",
     "multicast-dns": "^7.2.5"
   }
 }

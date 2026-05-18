@@ -17,10 +17,17 @@ function openExternalUrl(url) {
   if (window.blip?.openExternal) void window.blip.openExternal(url);
 }
 
-export function appendQuoteBlock(block, replyTo) {
+export function appendQuoteBlock(block, replyTo, onQuoteClick) {
   if (!replyTo?.id) return;
   const q = document.createElement('div');
   q.className = 'chat-quote';
+  if (onQuoteClick) {
+    q.classList.add('chat-quote--link');
+    q.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onQuoteClick(replyTo.id);
+    });
+  }
   const who = document.createElement('span');
   who.className = 'chat-quote-who';
   who.textContent = replyTo.fromLabel || `#${replyTo.from}` || '';
@@ -118,7 +125,7 @@ function appendVideoBubble(block, attachment) {
   vid.preload = 'metadata';
   const play = document.createElement('span');
   play.className = 'chat-media-play';
-  play.textContent = '▶';
+  play.innerHTML = '<span class="pixel-glyph pixel-glyph--play"></span>';
   btn.appendChild(vid);
   btn.appendChild(play);
   if (attachment.name) {
@@ -174,8 +181,8 @@ function appendTextWithEmbeds(block, text) {
  * @param {HTMLElement} block
  * @param {{ text?: string, attachment?: object, replyTo?: object }} m
  */
-export function appendChatMessageBody(block, m) {
-  if (m.replyTo) appendQuoteBlock(block, m.replyTo);
+export function appendChatMessageBody(block, m, opts = {}) {
+  if (m.replyTo) appendQuoteBlock(block, m.replyTo, opts.onQuoteClick);
 
   const att = m.attachment;
   if (isImageAttachment(att)) {

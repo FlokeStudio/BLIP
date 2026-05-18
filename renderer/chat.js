@@ -20,6 +20,8 @@ function formatFileLimitLabelForChat(config) {
   return `${normalizeFileLimitGb(config?.maxFileTransferGb)} GB`;
 }
 import { createMessageId } from './message-id.js';
+import { getPinnedMessageId, setPinnedMessageId } from './chat-pins.js';
+import { exportPeerChatJson, exportPeerChatPdf } from './chat-export.js';
 
 const STORAGE_KEY = 'blip_chat_v1';
 const MAX_PER_PEER = 500;
@@ -103,7 +105,17 @@ export function toggleReactionOnMessage(peerId, messageId, emoji, fromPeerId) {
 
 export function clearPeerMessages(peerId) {
   messagesByPeer.delete(peerId);
+  setPinnedMessageId(peerId, null);
   persist();
+}
+
+export function applyMessageEdit(peerId, messageId, text, editedAt) {
+  const m = findMessage(peerId, messageId);
+  if (!m) return false;
+  m.text = String(text ?? '');
+  m.editedAt = editedAt || Date.now();
+  persist();
+  return true;
 }
 
 export function exportPeerChat(peerId, displayName) {
@@ -135,7 +147,9 @@ export function createChatView(
   onTyping,
   onReaction,
   onSendFile,
-  onPeerMenu
+  onPeerMenu,
+  onPin,
+  onEdit
 ) {
   registerMediaPlaceholder(t('chat.image_sent'));
   registerMediaPlaceholder(t('chat.file_sent'));
@@ -222,6 +236,26 @@ export function createChatView(
     exportPeerChat(peerId, name.textContent);
   });
 
+  const exportJsonItem = document.createElement('button');
+  exportJsonItem.type = 'button';
+  exportJsonItem.className = 'chat-menu-item';
+  exportJsonItem.dataset.i18n = 'chat.export_json';
+  exportJsonItem.textContent = t('chat.export_json');
+  exportJsonItem.addEventListener('click', () => {
+    menu.classList.add('hidden');
+    exportPeerChatJson(peerId, name.textContent);
+  });
+
+  const exportPdfItem = document.createElement('button');
+  exportPdfItem.type = 'button';
+  exportPdfItem.className = 'chat-menu-item';
+  exportPdfItem.dataset.i18n = 'chat.export_pdf';
+  exportPdfItem.textContent = t('chat.export_pdf');
+  exportPdfItem.addEventListener('click', () => {
+    menu.classList.add('hidden');
+    void exportPeerChatPdf(peerId, name.textContent);
+  });
+
   const clearItem = document.createElement('button');
   clearItem.type = 'button';
   clearItem.className = 'chat-menu-item chat-menu-item--danger';
@@ -235,6 +269,8 @@ export function createChatView(
   });
 
   menu.appendChild(exportItem);
+  menu.appendChild(exportJsonItem);
+  menu.appendChild(exportPdfItem);
   menu.appendChild(clearItem);
   menuWrap.appendChild(menuBtn);
   menuWrap.appendChild(menu);
@@ -274,6 +310,24 @@ export function createChatView(
   headActions.appendChild(searchInput);
   headActions.appendChild(menuWrap);
   header.appendChild(headActions);
+
+  const pinBar = document.createElement('div');
+  pinBar.className = 'chat-pin-bar glass hidden';
+  const pinLabel = document.createElement('span');
+  pinLabel.className = 'chat-pin-label';
+  pinLabel.dataset.i18n = 'chat.pinned';
+  pinLabel.textContent = t('chat.pinned');
+  const pinPreview = document.createElement('button');
+  pinPreview.type = 'button';
+  pinPreview.className = 'chat-pin-preview btn btn-lang';
+  const pinUnpin = document.createElement('button');
+  pinUnpin.type = 'button';
+  pinUnpin.className = 'chat-pin-unpin btn btn-lang chat-reply-btn--pixel';
+  pinUnpin.title = t('chat.unpin');
+  pinUnpin.textContent = '×';
+  pinBar.appendChild(pinLabel);
+  pinBar.appendChild(pinPreview);
+  pinBar.appendChild(pinUnpin);
 
   const messagesEl = document.createElement('div');
   messagesEl.className = 'chat-messages glass';
@@ -607,7 +661,155 @@ export function createChatView(
   wrap.addEventListener('dragover', onDragOver);
   wrap.addEventListener('drop', onDrop);
 
+  function scrollToMessageId(messageId) {
+    if (!messageId) return;
+    const el = messagesEl.querySelector(`[data-message-id="${messageId}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('chat-block--highlight');
+    setTimeout(() => el.classList.remove('chat-block--highlight'), 1600);
+  }
+
+  function renderPinBar() {
+    const pinId = getPinnedMessageId(peerId);
+    const pinned = pinId ? findMessage(peerId, pinId) : null;
+    if (!pinned) {
+      pinBar.classList.add('hidden');
+      return;
+    }
+    pinBar.classList.remove('hidden');
+    pinPreview.textContent = buildReplyPreview(pinned, peerId).slice(0, 96);
+    pinPreview.onclick = () => scrollToMessageId(pinId);
+  }
+
+  pinUnpin.addEventListener('click', () => {
+    setPinnedMessageId(peerId, null);
+    void onPin?.(peerId, { messageId: null, pinned: false });
+    renderPinBar();
+  });
+
+  function setPinMessage(m) {
+    if (!m?.id) return;
+    setPinnedMessageId(peerId, m.id);
+    void onPin?.(peerId, { messageId: m.id, pinned: true });
+    renderPinBar();
+  }
+
+  function openEditMessageDialog(m) {
+    return new Promise((resolve) => {
+      const backdrop = document.createElement('div');
+      backdrop.className = 'blip-modal-backdrop';
+      const modal = document.createElement('div');
+      modal.className = 'blip-modal glass';
+      const title = document.createElement('h3');
+      title.className = 'blip-modal-title';
+      title.dataset.i18n = 'chat.edit_title';
+      title.textContent = t('chat.edit_title');
+      const area = document.createElement('textarea');
+      area.className = 'input blip-modal-input chat-edit-area';
+      area.value = m.text || '';
+      area.maxLength = 4000;
+      const actions = document.createElement('div');
+      actions.className = 'blip-modal-actions';
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'btn btn-lang';
+      cancelBtn.textContent = t('dialog.cancel');
+      const saveBtn = document.createElement('button');
+      saveBtn.type = 'button';
+      saveBtn.className = 'btn btn-accent';
+      saveBtn.textContent = t('dialog.save');
+      let done = false;
+      const finish = (v) => {
+        if (done) return;
+        done = true;
+        backdrop.remove();
+        resolve(v);
+      };
+      cancelBtn.addEventListener('click', () => finish(null));
+      saveBtn.addEventListener('click', () => finish(area.value));
+      backdrop.addEventListener('click', (e) => {
+        if (e.target === backdrop) finish(null);
+      });
+      area.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          finish(null);
+        }
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          finish(area.value);
+        }
+      });
+      actions.appendChild(cancelBtn);
+      actions.appendChild(saveBtn);
+      modal.appendChild(title);
+      modal.appendChild(area);
+      modal.appendChild(actions);
+      backdrop.appendChild(modal);
+      document.body.appendChild(backdrop);
+      requestAnimationFrame(() => {
+        area.focus();
+        area.setSelectionRange(area.value.length, area.value.length);
+      });
+    });
+  }
+
+  async function startEditMessage(m) {
+    if (!m?.id || !m.outgoing) return;
+    const next = await openEditMessageDialog(m);
+    if (next === null) return;
+    const trimmed = next.trim();
+    if (!trimmed || trimmed === (m.text || '').trim()) return;
+    const editedAt = Date.now();
+    applyMessageEdit(peerId, m.id, trimmed, editedAt);
+    void onEdit?.(peerId, { messageId: m.id, text: trimmed, editedAt });
+    renderMessages();
+    renderPinBar();
+  }
+
+  function openMessageMenu(e, m) {
+    e.preventDefault();
+    const menuEl = document.createElement('div');
+    menuEl.className = 'chat-msg-menu';
+    const add = (key, fn) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'chat-menu-item';
+      btn.dataset.i18n = key;
+      btn.textContent = t(key);
+      btn.addEventListener('click', () => {
+        menuEl.remove();
+        fn();
+      });
+      menuEl.appendChild(btn);
+    };
+    if (m.id) {
+      add('chat.pin', () => setPinMessage(m));
+      if (m.outgoing && (m.text || '').trim()) {
+        add('chat.edit', () => void startEditMessage(m));
+      }
+      if (m.replyTo?.id) {
+        add('chat.jump_reply', () => scrollToMessageId(m.replyTo.id));
+      }
+    }
+    if (!menuEl.childElementCount) return;
+    document.body.appendChild(menuEl);
+    menuEl.style.position = 'fixed';
+    menuEl.style.left = `${Math.min(e.clientX, window.innerWidth - 180)}px`;
+    menuEl.style.top = `${Math.min(e.clientY, window.innerHeight - 120)}px`;
+    menuEl.style.zIndex = '600';
+    requestAnimationFrame(() => {
+      document.addEventListener(
+        'click',
+        () => menuEl.remove(),
+        { once: true }
+      );
+    });
+  }
+
   wrap.appendChild(header);
+  wrap.appendChild(pinBar);
   wrap.appendChild(messagesEl);
   wrap.appendChild(dropOverlay);
   wrap.appendChild(typingBar);
@@ -682,7 +884,17 @@ export function createChatView(
       block.className = `chat-block ${m.outgoing ? 'outgoing' : 'incoming'}`;
       block.dataset.messageId = m.id || '';
 
-      appendChatMessageBody(block, m);
+      appendChatMessageBody(block, m, { onQuoteClick: (id) => scrollToMessageId(id) });
+
+      if (m.editedAt) {
+        const edited = document.createElement('span');
+        edited.className = 'chat-edited';
+        edited.dataset.i18n = 'chat.edited';
+        edited.textContent = t('chat.edited');
+        block.appendChild(edited);
+      }
+
+      block.addEventListener('contextmenu', (e) => openMessageMenu(e, m));
 
       const actions = document.createElement('div');
       actions.className = 'chat-block-actions';
@@ -730,6 +942,7 @@ export function createChatView(
     } else {
       messagesEl.scrollTop = scrollPos;
     }
+    renderPinBar();
   }
 
   function scrollToBottom() {
@@ -767,11 +980,28 @@ export function createChatView(
         outgoing: false,
         attachment: msg.attachment,
         reactions: msg.reactions,
+        replyTo: msg.replyTo,
+        editedAt: msg.editedAt,
       };
       addMessage(peerId, incoming);
       renderMessages();
       flashNew();
       sounds.messageReceived();
+    },
+    handlePin(msg) {
+      if (msg.pinned === false || !msg.messageId) {
+        setPinnedMessageId(peerId, null);
+      } else {
+        setPinnedMessageId(peerId, msg.messageId);
+      }
+      renderPinBar();
+      renderMessages();
+    },
+    handleEdit(msg) {
+      if (!msg.messageId) return;
+      applyMessageEdit(peerId, msg.messageId, msg.text, msg.editedAt);
+      renderMessages();
+      renderPinBar();
     },
     handleReaction(msg) {
       const from = Number(msg.from);

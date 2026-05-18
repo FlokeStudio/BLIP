@@ -30,7 +30,7 @@ function ensureRoot() {
 
   const shareBtn = mkBtn(t('media.share'), 'media.share');
   const dlBtn = mkBtn(t('media.download'), 'media.download');
-  const closeBtn = mkBtn('✕', 'media.close');
+  const closeBtn = mkBtn('×', 'media.close');
   closeBtn.classList.add('media-viewer-close');
 
   toolbar.appendChild(shareBtn);
@@ -108,12 +108,15 @@ function ensureRoot() {
   }
 
   function syncPlayBtn() {
+    playBtn.innerHTML = '';
     if (state.type === 'youtube') {
-      playBtn.textContent = '▶';
+      playBtn.innerHTML = '<span class="pixel-glyph pixel-glyph--play"></span>';
       return;
     }
     if (state.type === 'video') {
-      playBtn.textContent = videoEl.paused ? '▶' : '■';
+      playBtn.innerHTML = videoEl.paused
+        ? '<span class="pixel-glyph pixel-glyph--play"></span>'
+        : '<span class="pixel-glyph pixel-glyph--pause"></span>';
     }
   }
 

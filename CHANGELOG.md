@@ -9,14 +9,19 @@ Release **version numbers** track [`app-metadata.json`](app-metadata.json) (sync
 
 ## [Unreleased]
 
-### Changed
+_Nothing yet._
 
-- **Projects Pad** — editor stretches to full workspace height (adaptive layout).
-- **Projects UI** — description moved to **?** hint; tool names localized (RU).
+## [0.7.6.1-beta.1] — Signal Corps
 
-### Documentation
+### Added
 
-- **Signal Corps** documented as BLIP’s flagship builder workspace (must-have on the mesh).
+- **Pin message** — right-click in 1:1 chat; pin strip under header; LAN sync (`message-pin`).
+- **Edit message** — edit your own messages; **edited** label; LAN sync (`message-edit`).
+- **Export JSON** / **Export PDF** — chat menu (`blip_chat_export_v1` + PDF transcript).
+
+### Fixed
+
+- **Media viewer** — pixel play/pause glyphs (no Unicode media symbols in controls).
 
 ## [0.7.6] — Signal Corps
 

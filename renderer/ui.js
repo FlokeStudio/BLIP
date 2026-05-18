@@ -407,6 +407,21 @@ function ensureChatView(peerId) {
           emoji: payload.emoji,
           add: payload.add,
         }),
+      (to, payload) =>
+        api.sendTcpMessage({
+          type: 'message-pin',
+          to,
+          messageId: payload.messageId,
+          pinned: payload.pinned !== false,
+        }),
+      (to, payload) =>
+        api.sendTcpMessage({
+          type: 'message-edit',
+          to,
+          messageId: payload.messageId,
+          text: payload.text,
+          editedAt: payload.editedAt,
+        }),
       async (to, file, onProgress) => {
         let tid = createMessageId();
         trackTransferStart(to, tid, {
@@ -3848,6 +3863,24 @@ export function handleTcpMessage(msg) {
 
   if (msg.type === 'reaction') {
     state.chatViews.get(peerId)?.handleReaction?.(msg);
+    return;
+  }
+
+  if (msg.type === 'message-pin') {
+    const pinPeer = Number(msg.from === state.config.blipId ? msg.to : msg.from);
+    if (Number.isFinite(pinPeer) && !isBlocked(pinPeer)) {
+      ensureChatView(pinPeer);
+      state.chatViews.get(pinPeer)?.handlePin?.(msg);
+    }
+    return;
+  }
+
+  if (msg.type === 'message-edit') {
+    const editPeer = Number(msg.from === state.config.blipId ? msg.to : msg.from);
+    if (Number.isFinite(editPeer) && !isBlocked(editPeer)) {
+      ensureChatView(editPeer);
+      state.chatViews.get(editPeer)?.handleEdit?.(msg);
+    }
     return;
   }
 
