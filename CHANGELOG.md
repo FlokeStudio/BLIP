@@ -11,7 +11,7 @@ Release **version numbers** track [`app-metadata.json`](app-metadata.json) (sync
 
 _Nothing yet._
 
-## [0.7.6.1-beta.1] — Signal Corps
+## [0.7.7] — Signal Corps
 
 ### Added
 
@@ -21,6 +21,8 @@ _Nothing yet._
 
 ### Fixed
 
+- **Clicks & context menus** — avoid full view re-render during active chat (fixes dead LMB/RCM and sliders); stronger Electron hit-testing on interactive panels.
+- **1:1 screen share** — mini preview of your stream (PiP) when the peer’s camera is on.
 - **Media viewer** — pixel play/pause glyphs (no Unicode media symbols in controls).
 
 ## [0.7.6] — Signal Corps

@@ -3444,7 +3444,6 @@ function renderChatHubView() {
 function renderView(viewName) {
   if (!mainContent) return;
   state.view = viewName;
-  mainContent.innerHTML = '';
 
   let view;
   switch (viewName) {
@@ -3479,6 +3478,17 @@ function renderView(viewName) {
       view = renderDialView();
   }
 
+  const current = mainContent.firstElementChild;
+  if (current === view) {
+    applyI18n(mainContent);
+    updateNavActive();
+    if (viewName === 'peers') {
+      void runMeshPulseRound();
+    }
+    return;
+  }
+
+  mainContent.innerHTML = '';
   mainContent.appendChild(view);
   applyI18n(mainContent);
 
@@ -3750,7 +3760,17 @@ export function handleTcpMessage(msg) {
       });
     }
     window.dispatchEvent(new CustomEvent('blip-avatar-changed'));
-    if (state.view === 'peers' || state.view === 'chat') renderView(state.view);
+    if (state.view === 'peers') {
+      renderView('peers');
+    } else if (state.view === 'chat') {
+      if (state.activePeer != null) {
+        state.chatViews.get(state.activePeer)?.refreshHeaderAvatar?.();
+      } else if (state.activeGroup != null) {
+        state.groupChatViews.get(state.activeGroup)?.refreshHeaderAvatar?.();
+      } else {
+        renderView('chat');
+      }
+    }
     return;
   }
 
@@ -3840,7 +3860,9 @@ export function handleTcpMessage(msg) {
       onGroupRemoved: (groupId) => {
         closeGroupChatUi(groupId);
         unreadByGroup.delete(groupId);
-        if (state.view === 'chat') renderView('chat');
+        if (state.view === 'chat' && !state.activePeer && !state.activeGroup) {
+          renderView('chat');
+        }
       },
       onMemberLeft: (groupId) => {
         if (state.view === 'chat' && state.activeGroup === groupId) {

@@ -86,7 +86,7 @@ Groups (`groups.js`, voice channels) are intentionally separate and remain beta;
 | Favorite peer IDs | Renderer `localStorage` key `blip_favorites_v1`. |
 | Avatar seeds (per BLIP ID) | Renderer `localStorage` key `blip_avatar_seed_v1` (`avatar.js`). |
 <<<<<<< HEAD
-| Release metadata | `app-metadata.json` (version **0.7.6**, codename **Signal Corps**, repo URL). |
+| Release metadata | `app-metadata.json` (version **0.7.7**, codename **Signal Corps**, repo URL). |
 | Group avatars | Renderer `localStorage` `blip_group_avatar_v1` |
 =======
 | Release metadata | `app-metadata.json` (version **0.7.4**, codename **Signal**, repo URL). |

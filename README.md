@@ -60,7 +60,7 @@ Quick VM flow: host runs BLIP (ID **1**), VM runs BLIP (ID **2**), same subnet v
 | | |
 |---|---|
 | **What** | Desktop app: text, voice, and video over LAN / Hamachi / Radmin VPN |
-| **Release** | **0.7.6 — Signal Corps** (see [`CHANGELOG.md`](CHANGELOG.md)) |
+| **Release** | **0.7.7 — Signal Corps** (see [`CHANGELOG.md`](CHANGELOG.md)) |
 | **Identity** | BLIP ID **1–64** (8×8 grid, Minecraft-style chunk metaphor) |
 | **Servers** | None — UDP broadcast, TCP, and WebRTC peer-to-peer only |
 | **Sign-up** | None |
@@ -346,7 +346,7 @@ The **Minecraft** font is licensed separately under [MIT](https://github.com/bs-
 | | |
 |---|---|
 | **Что это** | Desktop-приложение: текст, голос и видео по LAN / Hamachi / Radmin VPN |
-| **Релиз** | **0.7.6 — Signal Corps** (см. [`CHANGELOG.md`](CHANGELOG.md)) |
+| **Релиз** | **0.7.7 — Signal Corps** (см. [`CHANGELOG.md`](CHANGELOG.md)) |
 | **Идентификация** | BLIP ID **1–64** (сетка 8×8) |
 | **Серверы** | Нет — только UDP broadcast, TCP и WebRTC между пирами |
 | **Регистрация** | Нет |

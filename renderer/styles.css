@@ -90,11 +90,17 @@ textarea {
 #app {
   position: relative;
   z-index: 1;
+  isolation: isolate;
+  transform: translateZ(0);
 }
 
 .main-content,
 .chat-view,
-.side-nav {
+.side-nav,
+.peers-view,
+.settings-view,
+.dial-view,
+.projects-workspace-view {
   position: relative;
   z-index: 2;
 }
@@ -105,12 +111,33 @@ textarea {
 .main-content select,
 .main-content a,
 .main-content label,
+.main-content input[type='range'],
+.side-nav button,
+.peers-view button,
+.peers-view input,
+.peers-view textarea,
+.peers-view select,
+.peers-view a,
+.peers-view label,
+.settings-view button,
+.settings-view input,
+.settings-view textarea,
+.settings-view select,
+.settings-view a,
+.settings-view label,
+.settings-view input[type='range'],
+.dial-view button,
 .chat-view button,
 .chat-view input,
 .chat-view textarea,
 .chat-view select,
 .chat-view a,
 .chat-view label,
+.chat-view input[type='range'],
+.chat-hub-row,
+.chat-pin-bar button,
+.chat-reply-bar button,
+.chat-menu-item,
 .context-menu button,
 .emoji-picker button {
   pointer-events: auto;
@@ -1964,8 +1991,21 @@ select.blip-select:focus {
   max-height: none;
 }
 
-.call-video-wrap--remote-primary .call-video.local {
+.call-video-wrap--remote-primary .call-video.local:not(.call-video--stage) {
   display: none;
+}
+
+/* 1:1 screen share + remote camera — remote full stage, own stream PiP */
+.call-video-wrap--remote-primary.call-video-wrap--stage .call-video.local.call-video--stage {
+  display: block;
+  position: absolute;
+  width: min(22vw, 200px);
+  height: auto;
+  aspect-ratio: 16 / 9;
+  max-height: 112px;
+  bottom: 8px;
+  right: 8px;
+  z-index: 2;
 }
 
 .call-voice-wrap {
@@ -2690,7 +2730,8 @@ select.blip-select:focus {
   padding: 12px 14px;
   border: 2px solid var(--blip-accent);
   background: var(--blip-toast-bg);
-  backdrop-filter: blur(12px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   font-size: 12px;
 }
 

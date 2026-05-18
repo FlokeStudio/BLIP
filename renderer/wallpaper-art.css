@@ -4,6 +4,12 @@ html {
   --blip-bg-pulse: 0;
 }
 
+/* Decorative layers must not participate in hit-testing (Electron/Chromium). */
+html[data-animated-bg]:not([data-animated-bg='none']) body::before,
+html[data-animated-bg]:not([data-animated-bg='none']) body::after {
+  pointer-events: none !important;
+}
+
 html[data-reactive-bg='1'][data-animated-bg]:not([data-animated-bg='none']) body::before {
   transition:
     filter 0.12s ease-out,

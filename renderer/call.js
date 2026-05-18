@@ -355,7 +355,8 @@ export function createCallUI(config, api, options = {}) {
     if (sharingScreen && remoteScreen) {
       setStageView('both');
     } else if (sharingScreen) {
-      setStageView('local');
+      const remoteCamera = hasLiveVideo(remoteVideo.srcObject);
+      setStageView(remoteCamera ? 'both' : 'local');
     } else {
       setStageView('remote');
     }
