@@ -45,6 +45,9 @@ export function buildSettingsMeshPlusPanel(state, onConfigChange) {
   pixelHero.inner.appendChild(statusCard);
   frag.appendChild(pixelHero.hero);
 
+  const carouselPixelStrip = createMeshPlusPixelStrip(false);
+  frag.appendChild(carouselPixelStrip.strip);
+
   const carouselTitle = document.createElement('h3');
   carouselTitle.className = 'section-subtitle';
   carouselTitle.dataset.i18n = 'mesh_plus.carousel_title';
@@ -53,8 +56,6 @@ export function buildSettingsMeshPlusPanel(state, onConfigChange) {
 
   const carousel = document.createElement('div');
   carousel.className = 'mesh-plus-carousel settings-list-panel';
-  const carouselPixelStrip = createMeshPlusPixelStrip(false);
-  carousel.appendChild(carouselPixelStrip.strip);
   const carouselTop = document.createElement('div');
   carouselTop.className = 'mesh-plus-carousel__top';
   const slideCounter = document.createElement('span');

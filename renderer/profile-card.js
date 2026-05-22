@@ -242,6 +242,7 @@ export function buildProfileCard(peerInput, hooks = {}) {
         if (url) {
           cloudWrap.classList.remove('hidden');
           cloudImg.onload = () => applyGifCloudSize(cloud, cloudImg);
+          cloudImg.decoding = 'async';
           cloudImg.src = url;
           cloudImg.classList.remove('hidden');
           cloud.classList.add('profile-gif-cloud--active');

@@ -101,7 +101,7 @@ Groups (`groups.js`, voice channels) are beta and gated by `devGroupsEnabled` in
 | Chat history | Renderer `localStorage` key `blip_chat_v1`. |
 | Favorite peer IDs | Renderer `localStorage` key `blip_favorites_v1`. |
 | Avatar seeds (per BLIP ID) | Renderer `localStorage` key `blip_avatar_seed_v1` (`avatar.js`). |
-| Release metadata | `app-metadata.json` (version **1.0.2**, codename **Mesh Plus**, repo URL). |
+| Release metadata | `app-metadata.json` (version **1.0.3**, codename **Echo**, repo URL). |
 | Achievement icons | `ach-icons/*.svg` → `renderer/achievements-icons.js` (Vite `?url` imports). |
 | MESH+ overview | [`MESH-PLUS.md`](MESH-PLUS.md) — tier summary (no phased roadmap file). |
 | Group avatars | Renderer `localStorage` `blip_group_avatar_v1` |

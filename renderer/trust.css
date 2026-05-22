@@ -7,15 +7,37 @@
   box-shadow: none;
 }
 
+/* Official MESH PLUS — purple/cyan animated gradient on platinum plaque (see styles.css) */
 .mesh-plus-badge--trust-official .mesh-plus-badge__text {
-  background: linear-gradient(135deg, rgba(124, 58, 237, 0.45), rgba(34, 211, 238, 0.35)) !important;
-  border-color: rgba(124, 58, 237, 0.65) !important;
-  box-shadow: 0 0 8px rgba(124, 58, 237, 0.35);
+  animation: mesh-plus-badge-gradient 3.2s ease-in-out infinite;
 }
 
+/* Unofficial subscription — same plaque, red animated gradient */
 .mesh-plus-badge--trust-unverified .mesh-plus-badge__text {
-  background: rgba(255, 60, 60, 0.22) !important;
-  border-color: rgba(255, 60, 60, 0.55) !important;
+  background: linear-gradient(
+    105deg,
+    #fff0f0 0%,
+    #fecaca 14%,
+    #f87171 28%,
+    #dc2626 42%,
+    #991b1b 52%,
+    #ef4444 66%,
+    #fca5a5 80%,
+    #fff0f0 100%
+  );
+  background-size: 220% 100%;
+  background-position: 0% 50%;
+  animation: mesh-plus-badge-gradient-red 3.2s ease-in-out infinite;
+}
+
+@keyframes mesh-plus-badge-gradient-red {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
 }
 
 /* Settings → MESH+ pixel field (BLIP purple → cyan → mint) */
@@ -44,8 +66,6 @@
 .mesh-plus-pixel-grid--strip {
   position: relative;
   inset: auto;
-  grid-template-columns: repeat(20, 1fr);
-  grid-template-rows: repeat(3, 1fr);
   padding: 6px 8px;
   gap: 2px;
 }
@@ -90,10 +110,59 @@
 }
 
 .mesh-plus-pixel-strip {
-  margin: 0 0 8px;
+  position: relative;
+  margin: 0 0 10px;
+  min-height: 52px;
   border: 2px solid var(--blip-glass-border);
   overflow: hidden;
   image-rendering: pixelated;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.45);
+}
+
+.mesh-plus-pixel-banner__label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  font-family: var(--blip-font, 'Minecraft', monospace);
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  pointer-events: none;
+  white-space: nowrap;
+  background: linear-gradient(
+    105deg,
+    #f5f0ff 0%,
+    #ddd6fe 14%,
+    #c084fc 28%,
+    #7c3aed 42%,
+    #5b21b6 52%,
+    #22d3ee 62%,
+    #a78bfa 72%,
+    #6ee7b7 86%,
+    #f5f0ff 100%
+  );
+  background-size: 240% 100%;
+  background-position: 0% 50%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.75));
+  animation: mesh-plus-badge-gradient 3.4s ease-in-out infinite;
+}
+
+.mesh-plus-hero .mesh-plus-pixel-banner__label {
+  font-size: 13px;
+  letter-spacing: 0.16em;
+}
+
+.mesh-plus-pixel-grid--strip {
+  grid-template-columns: repeat(28, 1fr) !important;
+  grid-template-rows: repeat(4, 1fr) !important;
+  min-height: 52px;
 }
 
 .mesh-plus-pixel-strip--free .mesh-plus-pixel-grid__cell {
@@ -128,10 +197,17 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mesh-plus-pixel-grid__cell {
+  .mesh-plus-pixel-grid__cell,
+  .mesh-plus-pixel-banner__label,
+  .mesh-plus-badge--trust-unverified .mesh-plus-badge__text {
     animation: none !important;
     opacity: 0.85;
     transform: none;
+  }
+  .mesh-plus-pixel-banner__label {
+    transform: translate(-50%, -50%);
+    background-size: 100% 100%;
+    background-position: 50% 50%;
   }
 }
 

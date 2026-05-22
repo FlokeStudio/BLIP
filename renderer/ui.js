@@ -258,7 +258,6 @@ let meshPulseTimer = null;
 let profilePageCleanup = null;
 /** @type {{ peerId: number, refresh: () => void, setPeer?: (p: object) => void, destroy: () => void } | null} */
 let profilePageApi = null;
-let profileRenderInProgress = false;
 
 /** @type {Map<number, number>} */
 const unreadByPeer = new Map();
@@ -910,8 +909,10 @@ function renderPeersView() {
         showPeerContextMenu(e, peer);
       });
 
-      row.addEventListener('click', () => {
-        void openChat(peer.blipId);
+      const openPeerChat = () => void openChat(peer.blipId);
+      row.addEventListener('click', openPeerChat);
+      row.addEventListener('auxclick', (e) => {
+        if (e.button === 1) openPeerChat();
       });
       row.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -994,6 +995,7 @@ function getPeerProfileHooks(peer) {
 
 function openPeerProfileFromUi(peerOrId) {
   const peer = resolvePeerForProfile(peerOrId);
+  if (!peer?.blipId) return;
   if (peer.hasProfileGif && !getPeerProfileGifDataUrl(peer.blipId)) {
     void requestPeerProfileGif(peer.blipId);
   }
@@ -1005,7 +1007,14 @@ function openPeerProfileFromUi(peerOrId) {
     };
   }
   state.profilePeerId = peer.blipId;
-  renderView('profile');
+  state.view = 'profile';
+  const wrap = renderPeerProfileViewInner();
+  if (!wrap) return;
+  if (mainContent?.isConnected) {
+    mountMainContentView(wrap);
+  } else {
+    render();
+  }
 }
 
 function leavePeerProfilePage() {
@@ -1033,7 +1042,6 @@ function resolvePeerForProfile(peerOrId) {
 }
 
 function syncPeerProfilePage() {
-  if (profileRenderInProgress) return;
   const peer = resolvePeerForProfile(state.profilePeerId);
   if (!peer?.blipId) return;
   if (peer.hasProfileGif && !getPeerProfileGifDataUrl(peer.blipId)) {
@@ -1049,13 +1057,7 @@ function syncPeerProfilePage() {
 }
 
 function renderPeerProfileView() {
-  if (profileRenderInProgress) return null;
-  profileRenderInProgress = true;
-  try {
-    return renderPeerProfileViewInner();
-  } finally {
-    profileRenderInProgress = false;
-  }
+  return renderPeerProfileViewInner();
 }
 
 function renderPeerProfileViewInner() {
@@ -3591,7 +3593,7 @@ async function runPeerPing(peer) {
 function mountMainContentView(el) {
   if (!mainContent || !el) return;
   const current = mainContent.firstElementChild;
-  if (current === el) return;
+  if (current === el && el.isConnected) return;
   if (state.view === 'settings') runSettingsPanelCleanup();
   profilePageCleanup?.();
   mainContent.replaceChildren(el);
@@ -3848,7 +3850,11 @@ function renderChatHubView() {
       item.appendChild(avatar);
       item.appendChild(info);
       item.appendChild(dot);
-      item.addEventListener('click', () => openChat(row.blipId));
+      const openHubChat = () => void openChat(row.blipId);
+      item.addEventListener('click', openHubChat);
+      item.addEventListener('auxclick', (e) => {
+        if (e.button === 1) openHubChat();
+      });
       item.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -3868,7 +3874,6 @@ function renderView(viewName) {
   if (viewName === 'profile' && state.profilePeerId == null) {
     viewName = 'peers';
   }
-  const prevView = state.view;
   state.view = viewName;
 
   let view;
@@ -3886,12 +3891,7 @@ function renderView(viewName) {
       view = renderProjectsView();
       break;
     case 'profile': {
-      const profileView = renderPeerProfileView();
-      if (!profileView) {
-        state.view = prevView;
-        return;
-      }
-      view = profileView;
+      view = renderPeerProfileView();
       break;
     }
     case 'chat': {

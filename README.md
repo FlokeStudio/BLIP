@@ -64,7 +64,7 @@ Quick VM flow: host runs BLIP (ID **1**), VM runs BLIP (ID **2**), same subnet v
 | | |
 |---|---|
 | **What** | Desktop app: text, voice, and video over LAN / Hamachi / Radmin VPN |
-| **Release** | **1.0.2 — Mesh Plus** (see [`CHANGELOG.md`](CHANGELOG.md); last GitHub tag: [v0.7.7](https://github.com/krwg/BLIP/releases/tag/v0.7.7)) |
+| **Release** | **1.0.3 — Echo** (see [`CHANGELOG.md`](CHANGELOG.md); last GitHub tag: [v0.7.7](https://github.com/krwg/BLIP/releases/tag/v0.7.7)) |
 | **Identity** | BLIP ID **1–64** (8×8 grid, Minecraft-style chunk metaphor) |
 | **Servers** | None — UDP broadcast, TCP, and WebRTC peer-to-peer only |
 | **Sign-up** | None |
@@ -311,7 +311,7 @@ blip/
 │   └── assets/fonts/  # Minecraft woff2/ttf
 ├── docs/              # ARCHITECTURE.md + GitHub Pages landing
 ├── build/             # icon.ico, icon.png (generated)
-├── app-metadata.json  # version 1.0.2, codename Mesh Plus
+├── app-metadata.json  # version 1.0.3, codename Echo
 ├── docs/MESH-PLUS.md  # MESH+ feature list
 ├── ach-icons/         # achievement SVGs (bundled in renderer)
 ├── preload.cjs        # IPC bridge
@@ -373,7 +373,7 @@ The **Minecraft** font is licensed separately under [MIT](https://github.com/bs-
 | | |
 |---|---|
 | **Что это** | Desktop-приложение: текст, голос и видео по LAN / Hamachi / Radmin VPN |
-| **Релиз** | **1.0.2 — Mesh Plus** (см. [`CHANGELOG.md`](CHANGELOG.md); на GitHub: [v0.7.7](https://github.com/krwg/BLIP/releases/tag/v0.7.7)) |
+| **Релиз** | **1.0.3 — Echo** (см. [`CHANGELOG.md`](CHANGELOG.md); на GitHub: [v0.7.7](https://github.com/krwg/BLIP/releases/tag/v0.7.7)) |
 | **Идентификация** | BLIP ID **1–64** (сетка 8×8) |
 | **Серверы** | Нет — только UDP broadcast, TCP и WebRTC между пирами |
 | **Регистрация** | Нет |

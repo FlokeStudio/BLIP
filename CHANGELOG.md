@@ -9,6 +9,23 @@ Release **version numbers** track [`app-metadata.json`](app-metadata.json) (sync
 
 ## [Unreleased]
 
+## [1.0.3] — Echo — 2026-05-22
+
+Stable release (codename **Echo**). Focus: profiles with GIF status, reliable chat open, restored MESH PLUS badge, MESH+ settings pixel banner.
+
+### Fixed
+
+- **Profiles** — opening a peer profile with a status GIF no longer fails; direct mount instead of blocked re-render; GIF loads asynchronously without blocking the page.
+- **Chats** — conversations open from peer list, chat hub, and context menu (`mountMainContentView` + `isConnected` check).
+- **Calls** — TCP signalling prefers existing inbound/outbound sockets (carried from 1.0.2).
+- **Windows auto-update** — `verifyUpdateCodeSignature = false` for unsigned GitHub installers (install **1.0.3** once if you are on a broken **1.0.2** build without this fix).
+
+### Changed
+
+- **MESH PLUS badge** — platinum plaque + animated gradient label **MESH PLUS** (not «+»); unofficial subscriptions use the same style with a **red** gradient.
+- **Settings → MESH+** — pixel cube strip with gradient animation and **MESH PLUS** label above the benefits carousel; gray when FREE.
+- **MESH+ docs** — test tier, free keys via blipteam@icloud.com ([`docs/MESH-PLUS.md`](docs/MESH-PLUS.md)).
+
 ## [1.0.2] — Mesh Plus UI & trust — 2026-05-21
 
 ### Added
