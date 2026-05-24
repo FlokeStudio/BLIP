@@ -7,15 +7,15 @@
 
 **P2P messenger for local networks — no cloud, no servers, no internet.**
 
-[![Electron](https://img.shields.io/badge/Electron-35-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vitejs.dev/)
-[![License](https://img.shields.io/badge/License-GPLv3-00ffc8?style=flat-square)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?style=flat-square&logo=windows&logoColor=white)]()
-[![P2P](https://img.shields.io/badge/Network-P2P%20LAN-00ffc8?style=flat-square)]()
-[![Lang](https://img.shields.io/badge/i18n-EN%20%7C%20RU-e0e0e0?style=flat-square)]()
-
+[![Version](https://img.shields.io/badge/version-1.1.1_Beacon-00ffc8?style=for-the-badge&labelColor=0a0a0a)](https://github.com/krwg/BLIP/releases)
+[![Electron](https://img.shields.io/badge/Electron-35-47848F?style=for-the-badge&logo=electron&logoColor=white&labelColor=0a0a0a)](https://www.electronjs.org/)
+[![License](https://img.shields.io/badge/License-GPLv3-00ffc8?style=for-the-badge&labelColor=0a0a0a)](LICENSE)
+[![Platform](https://img.shields.io/badge/Windows-10%2F11-0078D6?style=for-the-badge&logo=windows&logoColor=white&labelColor=0a0a0a)]()
+[![i18n](https://img.shields.io/badge/i18n-EN%20%7C%20RU-e0e0e0?style=for-the-badge&labelColor=0a0a0a)]()
+ 
 *You're on the grid. You're the signal.*
-
+[**English**](#english) · [**Русский**](#russian) · [**Сайт**](https://krwg.github.io/BLIP/)
+ 
 </div>
 
 ## Navigation
