@@ -5,18 +5,28 @@
 
 # BLIP
 
-**P2P messenger for local networks — no cloud, no servers, no internet.**
+<img src="https://readme-typing-svg.demolab.com?font=JetBrains+Mono&size=14&duration=4000&pause=2000&color=E0E0E0&center=true&vCenter=true&width=700&height=30&lines=P2P+messenger+for+local+networks;No+cloud.+No+servers.+No+internet.+No+accounts." alt="Tagline"/>
+
+<br>
 
 [![Version](https://img.shields.io/badge/version-1.1.1_Beacon-00ffc8?style=for-the-badge&labelColor=0a0a0a)](https://github.com/krwg/BLIP/releases)
 [![Electron](https://img.shields.io/badge/Electron-35-47848F?style=for-the-badge&logo=electron&logoColor=white&labelColor=0a0a0a)](https://www.electronjs.org/)
 [![License](https://img.shields.io/badge/License-GPLv3-00ffc8?style=for-the-badge&labelColor=0a0a0a)](LICENSE)
 [![Platform](https://img.shields.io/badge/Windows-10%2F11-0078D6?style=for-the-badge&logo=windows&logoColor=white&labelColor=0a0a0a)]()
 [![i18n](https://img.shields.io/badge/i18n-EN%20%7C%20RU-e0e0e0?style=for-the-badge&labelColor=0a0a0a)]()
+
+<!-- Dynamic stats row -->
+[![Stars](https://img.shields.io/github/stars/krwg/BLIP?style=for-the-badge&labelColor=0a0a0a&color=00ffc8&logo=github)](https://github.com/krwg/BLIP/stargazers)
+[![Downloads](https://img.shields.io/github/downloads/krwg/BLIP/total?style=for-the-badge&labelColor=0a0a0a&color=00ffc8&logo=github)](https://github.com/krwg/BLIP/releases)
+[![Last Commit](https://img.shields.io/github/last-commit/krwg/BLIP?style=for-the-badge&labelColor=0a0a0a&color=00ffc8&logo=github)](https://github.com/krwg/BLIP/commits/main)
+[![Issues](https://img.shields.io/github/issues/krwg/BLIP?style=for-the-badge&labelColor=0a0a0a&color=ff3366&logo=github)](https://github.com/krwg/BLIP/issues)
+
+<br>
  
 *You're on the grid. You're the signal.*
 [**English**](#english) · [**Русский**](#russian) · [**Сайт**](https://krwg.github.io/BLIP/)
  
-</div>
+</div> with cyberpunk aesthetic -->
 
 ## Navigation
 
