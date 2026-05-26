@@ -3,6 +3,7 @@
 <img width="125" height="125" alt="icon-main" src="https://github.com/user-attachments/assets/a4ec54d8-4c6f-4923-bf16-42cb8f9b3b7d" />
 
 
+
 # BLIP
 
 <img src="https://readme-typing-svg.demolab.com?font=JetBrains+Mono&size=14&duration=4000&pause=2000&color=E0E0E0&center=true&vCenter=true&width=700&height=30&lines=P2P+messenger+for+local+networks;No+cloud.+No+servers.+No+internet.+No+accounts." alt="Tagline"/>
