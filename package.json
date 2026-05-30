@@ -47,7 +47,7 @@
   },
   "dependencies": {
     "electron-updater": "^6.8.3",
-    "jspdf": "^2.5.2",
+    "jspdf": "^4.2.1",
     "multicast-dns": "^7.2.5"
   }
 }
