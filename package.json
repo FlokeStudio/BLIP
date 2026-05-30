@@ -37,7 +37,7 @@
     "@fontsource/press-start-2p": "^5.2.7",
     "concurrently": "^9.1.2",
     "electron": "^35.1.2",
-    "electron-builder": "^25.1.8",
+    "electron-builder": "^26.8.1",
     "javascript-obfuscator": "^4.1.1",
     "sharp": "^0.34.1",
     "to-ico": "^1.1.5",
