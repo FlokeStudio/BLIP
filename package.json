@@ -43,7 +43,7 @@
     "to-ico": "^1.1.5",
     "typeface-minecraft": "^1.0.0",
     "vite": "^6.2.6",
-    "wait-on": "^8.0.3"
+    "wait-on": "^9.0.10"
   },
   "dependencies": {
     "electron-updater": "^6.8.3",
